@@ -7,19 +7,19 @@
       aria-label="打开数字人助手"
       @click="expand"
     >
-      <img class="assistant-trigger__avatar" :src="DIGITAL_HUMAN_ASSETS.avatar" alt="" />
+      <img class="assistant-trigger__avatar" :src="manifest.fallbackPosterUrl || fallbackPosterUrl" alt="" />
       <span class="assistant-trigger__content">
         <strong>数字人助手</strong>
-        <span>点击展开演示</span>
+        <span>点击展开 Live2D 演示</span>
       </span>
     </button>
 
     <div v-else class="assistant-panel">
       <header class="assistant-panel__header">
         <div class="assistant-panel__identity">
-          <span class="assistant-panel__status-dot"></span>
+          <span class="assistant-panel__status-dot" :class="`is-${status}`"></span>
           <div>
-            <strong>数字人小婉</strong>
+            <strong>数字人小助</strong>
             <p>{{ statusLabel }}</p>
           </div>
         </div>
@@ -39,129 +39,113 @@
         </div>
       </header>
 
-      <div class="assistant-stage">
-        <div class="assistant-stage__media">
-          <video
-            v-for="stateName in stateNames"
-            :key="stateName"
-            :ref="(element) => setVideoRef(stateName, element as HTMLVideoElement | null)"
-            class="assistant-stage__video"
-            :class="[
-              `is-${stateName}`,
-              {
-                'is-active': status === stateName,
-                'is-ready': readyStates[stateName]
-              }
-            ]"
-            :style="VIDEO_FRAME_VARS[stateName]"
-            :src="DIGITAL_HUMAN_ASSETS.videos[stateName]"
-            muted
-            loop
-            autoplay
-            playsinline
-            preload="auto"
-            @canplay="handleVideoReady(stateName)"
-            @error="handleVideoError(stateName)"
-          ></video>
-
-          <img
-            v-if="shouldShowFallback"
-            class="assistant-stage__fallback"
-            :src="DIGITAL_HUMAN_ASSETS.avatar"
-            alt="数字人形象"
+      <div class="assistant-panel__body">
+        <div class="assistant-panel__stage">
+          <Live2DStage
+            :manifest="manifest"
+            :state="status"
+            :speech-result="speechResult"
+            :autoplay-token="speechToken"
+            @speech-complete="handleSpeechComplete"
           />
+
+          <div class="assistant-panel__summary">
+            <p class="assistant-panel__eyebrow">Live2D Demo</p>
+            <h1>实时对话 + 状态机 + 能量口型驱动</h1>
+            <p class="assistant-panel__description">
+              {{ latestAssistantText }}
+            </p>
+            <p class="assistant-panel__hint">
+              当前运行模式：{{ manifestModeLabel }}。项目已切到 `Live2D + Motion + 参数驱动`，后续只要替换正式模型包和
+              TTS 接口即可继续升级。
+            </p>
+          </div>
         </div>
 
-        <div class="assistant-stage__meta">
-          <p class="assistant-stage__eyebrow">Front-end Demo</p>
-          <h1>数字人前端展示版</h1>
-          <p class="assistant-stage__description">
-            {{ latestAssistantText }}
-          </p>
-        </div>
+        <section class="assistant-suggestions">
+          <button
+            v-for="item in suggestions"
+            :key="item"
+            type="button"
+            class="assistant-suggestions__item"
+            @click="sendText(item)"
+          >
+            {{ item }}
+          </button>
+        </section>
+
+        <section ref="messagesRef" class="assistant-messages">
+          <article
+            v-for="message in messages"
+            :key="message.id"
+            class="assistant-message"
+            :class="[`is-${message.role}`, { 'is-pending': message.pending }]"
+          >
+            <header class="assistant-message__meta">
+              <strong>{{ roleLabelMap[message.role] }}</strong>
+              <time>{{ formatTime(message.timestamp) }}</time>
+            </header>
+            <p>{{ message.content }}</p>
+          </article>
+        </section>
+
+        <footer class="assistant-input">
+          <div class="assistant-input__field-wrap">
+            <textarea
+              v-model="inputText"
+              class="assistant-input__field"
+              rows="3"
+              placeholder="请输入你想演示的问题"
+              :disabled="isRecording"
+              @keydown="handleInputKeydown"
+            ></textarea>
+
+            <span v-if="isBusy" class="assistant-input__busy-tip">发送新问题会中断当前播报</span>
+          </div>
+
+          <div class="assistant-input__actions">
+            <button
+              type="button"
+              class="assistant-input__voice"
+              :class="{ 'is-recording': isRecording }"
+              @mousedown.prevent="startVoiceInput"
+              @mouseup.prevent="stopVoiceInput"
+              @mouseleave="handleVoiceLeave"
+              @touchstart.prevent="startVoiceInput"
+              @touchend.prevent="stopVoiceInput"
+            >
+              {{ isRecording ? '松开结束' : '按住说话' }}
+            </button>
+
+            <button
+              type="button"
+              class="assistant-input__send"
+              :disabled="!hasInput || isRecording"
+              @click="submitInput"
+            >
+              发送问题
+            </button>
+          </div>
+        </footer>
       </div>
-
-      <section class="assistant-suggestions">
-        <button
-          v-for="item in suggestions"
-          :key="item"
-          type="button"
-          class="assistant-suggestions__item"
-          :disabled="isRecording"
-          @click="sendText(item)"
-        >
-          {{ item }}
-        </button>
-      </section>
-
-      <section ref="messagesRef" class="assistant-messages">
-        <article
-          v-for="message in messages"
-          :key="message.id"
-          class="assistant-message"
-          :class="`is-${message.role}`"
-        >
-          <header class="assistant-message__meta">
-            <strong>{{ roleLabelMap[message.role] }}</strong>
-            <time>{{ formatTime(message.timestamp) }}</time>
-          </header>
-          <p>{{ message.content }}</p>
-        </article>
-      </section>
-
-      <footer class="assistant-input">
-        <textarea
-          v-model="inputText"
-          class="assistant-input__field"
-          rows="3"
-          placeholder="请输入你想演示的问题"
-          :disabled="isRecording"
-          @keydown="handleInputKeydown"
-        ></textarea>
-
-        <div class="assistant-input__actions">
-          <button
-            type="button"
-            class="assistant-input__voice"
-            :class="{ 'is-recording': isRecording }"
-            :disabled="isBusy"
-            @mousedown.prevent="startVoiceInput"
-            @mouseup.prevent="stopVoiceInput"
-            @mouseleave="handleVoiceLeave"
-            @touchstart.prevent="startVoiceInput"
-            @touchend.prevent="stopVoiceInput"
-          >
-            {{ isRecording ? '松开结束' : '按住说话' }}
-          </button>
-
-          <button
-            type="button"
-            class="assistant-input__send"
-            :disabled="!hasInput || isRecording"
-            @click="submitInput"
-          >
-            发送
-          </button>
-        </div>
-      </footer>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, watch } from 'vue'
-import {
-  DIGITAL_HUMAN_ASSETS,
-  VIDEO_FRAME_VARS,
-  type DigitalHumanStatus,
-  type MessageRole
-} from './demo-config'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import Live2DStage from './Live2DStage.vue'
+import { AVATAR_MANIFEST_URL, DEFAULT_AVATAR_MANIFEST } from './avatar-manifest'
+import type { AvatarManifest, DemoMessage } from './avatar-types'
 import { useDigitalHumanDemo } from './useDigitalHumanDemo'
+
+const fallbackPosterUrl = '/digital-human/avatar.jpg'
 
 const {
   clearConversation,
   collapse,
   expand,
+  handleSpeechComplete,
   hasInput,
   inputText,
   isBusy,
@@ -170,47 +154,23 @@ const {
   latestAssistantText,
   messages,
   sendText,
+  speechResult,
+  speechToken,
   startVoiceInput,
   status,
   stopVoiceInput,
   submitInput,
-  suggestions
+  suggestions,
 } = useDigitalHumanDemo()
 
-const stateNames: DigitalHumanStatus[] = ['idle', 'listening', 'thinking', 'speaking']
-const roleLabelMap: Record<MessageRole, string> = {
-  user: '你',
-  assistant: '数字人',
-  system: '系统'
-}
-
-const readyStates = reactive<Record<DigitalHumanStatus, boolean>>({
-  idle: false,
-  listening: false,
-  thinking: false,
-  speaking: false
-})
-
-const errorStates = reactive<Record<DigitalHumanStatus, boolean>>({
-  idle: false,
-  listening: false,
-  thinking: false,
-  speaking: false
-})
-
-const videoRefs = reactive<Record<DigitalHumanStatus, HTMLVideoElement | null>>({
-  idle: null,
-  listening: null,
-  thinking: null,
-  speaking: null
-})
-
+const manifest = ref<AvatarManifest>(DEFAULT_AVATAR_MANIFEST)
+const manifestLoadedFromFile = ref(false)
 const messagesRef = ref<HTMLElement | null>(null)
 
 const statusLabel = computed(() => {
   switch (status.value) {
     case 'listening':
-      return '正在倾听'
+      return '正在聆听'
     case 'thinking':
       return '正在思考'
     case 'speaking':
@@ -220,47 +180,49 @@ const statusLabel = computed(() => {
   }
 })
 
-const shouldShowFallback = computed(() => {
-  const currentStatus = status.value
-  return errorStates[currentStatus] || !readyStates[currentStatus]
+const manifestModeLabel = computed(() =>
+  manifestLoadedFromFile.value ? '正式 manifest + Live2D 样例模型' : '默认 Live2D manifest 回退'
+)
+
+const roleLabelMap: Record<DemoMessage['role'], string> = {
+  user: '你',
+  assistant: '数字人',
+  system: '系统',
+}
+
+const normalizeManifest = (incoming: Partial<AvatarManifest>): AvatarManifest => ({
+  ...DEFAULT_AVATAR_MANIFEST,
+  ...incoming,
+  textures: incoming.textures?.length ? incoming.textures : DEFAULT_AVATAR_MANIFEST.textures,
+  motions: {
+    ...DEFAULT_AVATAR_MANIFEST.motions,
+    ...(incoming.motions || {}),
+  },
+  expressions: incoming.expressions || DEFAULT_AVATAR_MANIFEST.expressions,
+  layout: {
+    ...DEFAULT_AVATAR_MANIFEST.layout,
+    ...(incoming.layout || {}),
+  },
+  parameters: {
+    ...DEFAULT_AVATAR_MANIFEST.parameters,
+    ...(incoming.parameters || {}),
+  },
 })
 
-const setVideoRef = (stateName: DigitalHumanStatus, element: HTMLVideoElement | null) => {
-  videoRefs[stateName] = element
-}
-
-const playActiveVideo = async (stateName: DigitalHumanStatus) => {
-  const videoElement = videoRefs[stateName]
-  if (!videoElement) {
-    return
-  }
-
+const loadManifest = async () => {
   try {
-    if (stateName !== 'idle') {
-      videoElement.currentTime = 0
+    const response = await fetch(AVATAR_MANIFEST_URL, { cache: 'no-store' })
+    if (!response.ok) {
+      throw new Error(`manifest request failed: ${response.status}`)
     }
+
+    const data = (await response.json()) as Partial<AvatarManifest>
+    manifest.value = normalizeManifest(data)
+    manifestLoadedFromFile.value = true
   } catch {
-    // Ignore seek errors before metadata is fully ready.
+    manifest.value = DEFAULT_AVATAR_MANIFEST
+    manifestLoadedFromFile.value = false
   }
-
-  try {
-    await videoElement.play()
-  } catch {
-    // Ignore autoplay rejections in restricted environments.
-  }
-}
-
-const handleVideoReady = (stateName: DigitalHumanStatus) => {
-  readyStates[stateName] = true
-  errorStates[stateName] = false
-
-  if (status.value === stateName) {
-    void playActiveVideo(stateName)
-  }
-}
-
-const handleVideoError = (stateName: DigitalHumanStatus) => {
-  errorStates[stateName] = true
 }
 
 const handleVoiceLeave = () => {
@@ -279,16 +241,8 @@ const handleInputKeydown = (event: KeyboardEvent) => {
 const formatTime = (timestamp: number) =>
   new Date(timestamp).toLocaleTimeString('zh-CN', {
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
   })
-
-watch(
-  status,
-  (currentStatus) => {
-    void playActiveVideo(currentStatus)
-  },
-  { immediate: true }
-)
 
 watch(
   messages,
@@ -303,6 +257,10 @@ watch(
   },
   { deep: true }
 )
+
+onMounted(() => {
+  void loadManifest()
+})
 </script>
 
 <style scoped>
@@ -310,18 +268,18 @@ watch(
   position: fixed;
   top: 20px;
   right: 20px;
-  z-index: 10;
+  z-index: 40;
 }
 
 .assistant-trigger {
   display: inline-flex;
   align-items: center;
   gap: 14px;
-  min-width: 218px;
+  min-width: 220px;
   padding: 12px 14px 12px 12px;
   border: none;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.16);
   cursor: pointer;
 }
@@ -354,11 +312,10 @@ watch(
 }
 
 .assistant-panel {
-  width: min(380px, calc(100vw - 32px));
+  width: min(430px, calc(100vw - 32px));
   max-height: calc(100vh - 40px);
   display: flex;
   flex-direction: column;
-  gap: 14px;
   padding: 16px;
   border-radius: 28px;
   background: rgba(255, 255, 255, 0.96);
@@ -371,6 +328,7 @@ watch(
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  margin-bottom: 14px;
 }
 
 .assistant-panel__identity {
@@ -397,6 +355,21 @@ watch(
   border-radius: 50%;
   background: #22c55e;
   box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.12);
+}
+
+.assistant-panel__status-dot.is-listening {
+  background: #38bdf8;
+  box-shadow: 0 0 0 6px rgba(56, 189, 248, 0.14);
+}
+
+.assistant-panel__status-dot.is-thinking {
+  background: #f59e0b;
+  box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.14);
+}
+
+.assistant-panel__status-dot.is-speaking {
+  background: #2563eb;
+  box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.12);
 }
 
 .assistant-panel__actions {
@@ -427,52 +400,22 @@ watch(
   color: #334155;
 }
 
-.assistant-stage {
+.assistant-panel__body {
   display: grid;
   gap: 14px;
 }
 
-.assistant-stage__media {
-  position: relative;
-  aspect-ratio: 4 / 5;
-  border-radius: 24px;
-  overflow: hidden;
-  background:
-    radial-gradient(circle at top, rgba(59, 130, 246, 0.18), transparent 30%),
-    linear-gradient(180deg, #f9fbff 0%, #edf5ff 100%);
+.assistant-panel__stage {
+  display: grid;
+  gap: 12px;
 }
 
-.assistant-stage__video,
-.assistant-stage__fallback {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.assistant-stage__video {
-  opacity: 0;
-  object-fit: contain;
-  object-position: var(--video-object-position, 50% 52%);
-  transform: scale(var(--video-scale, 1));
-  transition: opacity 220ms ease;
-}
-
-.assistant-stage__video.is-active.is-ready {
-  opacity: 1;
-}
-
-.assistant-stage__fallback {
-  object-fit: cover;
-  object-position: center top;
-}
-
-.assistant-stage__meta {
+.assistant-panel__summary {
   display: grid;
   gap: 8px;
 }
 
-.assistant-stage__eyebrow {
+.assistant-panel__eyebrow {
   margin: 0;
   color: #2563eb;
   font-size: 12px;
@@ -481,18 +424,25 @@ watch(
   text-transform: uppercase;
 }
 
-.assistant-stage__meta h1 {
+.assistant-panel__summary h1 {
   margin: 0;
   color: #0f172a;
-  font-size: 28px;
-  line-height: 1.1;
+  font-size: 24px;
+  line-height: 1.2;
 }
 
-.assistant-stage__description {
+.assistant-panel__description,
+.assistant-panel__hint {
   margin: 0;
   color: #475569;
   font-size: 14px;
   line-height: 1.6;
+}
+
+.assistant-panel__hint {
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(248, 250, 252, 0.96);
 }
 
 .assistant-suggestions {
@@ -508,11 +458,6 @@ watch(
   background: rgba(248, 250, 252, 0.9);
   color: #334155;
   cursor: pointer;
-}
-
-.assistant-suggestions__item:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .assistant-messages {
@@ -539,6 +484,10 @@ watch(
 
 .assistant-message.is-system {
   border: 1px dashed rgba(37, 99, 235, 0.24);
+}
+
+.assistant-message.is-pending {
+  opacity: 0.82;
 }
 
 .assistant-message__meta {
@@ -573,6 +522,11 @@ watch(
   background: #f8fafc;
 }
 
+.assistant-input__field-wrap {
+  display: grid;
+  gap: 8px;
+}
+
 .assistant-input__field {
   width: 100%;
   min-height: 78px;
@@ -581,6 +535,12 @@ watch(
   outline: none;
   background: transparent;
   color: #0f172a;
+  font-size: 14px;
+}
+
+.assistant-input__busy-tip {
+  color: #f97316;
+  font-size: 12px;
 }
 
 .assistant-input__actions {
@@ -609,7 +569,7 @@ watch(
 }
 
 .assistant-input__send {
-  min-width: 88px;
+  min-width: 102px;
   min-height: 42px;
   background: #0f172a;
   color: #ffffff;
@@ -619,6 +579,22 @@ watch(
 .assistant-input__send:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+@media (max-width: 1280px) {
+  .assistant-demo {
+    position: static;
+  }
+
+  .assistant-trigger {
+    margin-top: 16px;
+  }
+
+  .assistant-panel {
+    width: 100%;
+    max-height: none;
+    margin-top: 16px;
+  }
 }
 
 @media (max-width: 640px) {

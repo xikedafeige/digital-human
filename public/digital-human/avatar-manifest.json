@@ -1,0 +1,46 @@
+{
+  "version": "2.0.0",
+  "runtime": "live2d",
+  "coreScriptUrl": "/vendor/live2dcubismcore.min.js",
+  "modelUrl": "/digital-human/live2d/hiyori-free/hiyori_free_en/runtime/hiyori_free_t08.model3.json",
+  "textures": [
+    "/digital-human/live2d/hiyori-free/hiyori_free_en/runtime/hiyori_free_t08.2048/texture_00.png"
+  ],
+  "motions": {
+    "idle": {
+      "group": "Idle",
+      "index": 0
+    },
+    "listening": {
+      "group": "Idle",
+      "index": 1
+    },
+    "thinking": {
+      "group": "Flick",
+      "index": 0
+    },
+    "speakingBase": {
+      "group": "Tap",
+      "index": 0
+    }
+  },
+  "expressions": [],
+  "layout": {
+    "x": 0.5,
+    "y": 0.98,
+    "scale": 0.84,
+    "anchorX": 0.5,
+    "anchorY": 1
+  },
+  "parameters": {
+    "mouthOpenY": "ParamMouthOpenY",
+    "mouthForm": "ParamMouthForm",
+    "angleX": "ParamAngleX",
+    "angleY": "ParamAngleY",
+    "angleZ": "ParamAngleZ",
+    "bodyAngleX": "ParamBodyAngleX",
+    "eyeBallX": "ParamEyeBallX",
+    "eyeBallY": "ParamEyeBallY"
+  },
+  "fallbackPosterUrl": "/digital-human/avatar.jpg"
+}
