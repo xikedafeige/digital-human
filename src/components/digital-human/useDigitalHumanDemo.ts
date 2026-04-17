@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, ref } from 'vue'
+﻿import { computed, onBeforeUnmount, ref } from 'vue'
 import {
   buildDemoReply,
   buildMockSpeechResult,
@@ -43,9 +43,12 @@ export function useDigitalHumanDemo() {
   })
 
   let voicePromptIndex = 0
+  let activeFlowId = 0
   let activeTypingMessageId: string | null = null
-  let activeTypingFullText = ''
   let flowTimers: number[] = []
+  let activeReplyFlowId = 0
+  let typingCompleted = false
+  let speechCompleted = false
 
   const clearFlowTimers = () => {
     flowTimers.forEach((timer) => window.clearTimeout(timer))
@@ -61,22 +64,23 @@ export function useDigitalHumanDemo() {
     flowTimers.push(timer)
   }
 
-  const flushTypingMessage = () => {
-    if (!activeTypingMessageId || !activeTypingFullText) {
+  const stopTypingMessage = () => {
+    if (!activeTypingMessageId) {
       return
     }
 
     const targetMessage = messages.value.find((message) => message.id === activeTypingMessageId)
-    if (!targetMessage) {
-      activeTypingMessageId = null
-      activeTypingFullText = ''
-      return
+    if (targetMessage) {
+      targetMessage.pending = false
     }
 
-    targetMessage.content = activeTypingFullText
-    targetMessage.pending = false
     activeTypingMessageId = null
-    activeTypingFullText = ''
+  }
+
+  const clearActiveReplyState = () => {
+    activeReplyFlowId = 0
+    typingCompleted = false
+    speechCompleted = false
   }
 
   const resetToWelcome = () => {
@@ -85,11 +89,37 @@ export function useDigitalHumanDemo() {
     isRecording.value = false
     status.value = 'idle'
     speechResult.value = null
+    clearActiveReplyState()
   }
 
-  const typeReply = (messageId: string, fullReply: string, durationMs: number) => {
+  const scheduleIdleTransition = (flowId: number) => {
+    queueTimeout(() => {
+      if (flowId !== activeFlowId || activeReplyFlowId !== flowId) {
+        return
+      }
+
+      status.value = 'idle'
+      speechResult.value = null
+      clearActiveReplyState()
+    }, RESPONSE_TIMING.speakingTailMs)
+  }
+
+  const tryFinishReplyFlow = (flowId: number) => {
+    if (flowId !== activeFlowId || activeReplyFlowId !== flowId) {
+      return
+    }
+
+    if (!typingCompleted || !speechCompleted) {
+      return
+    }
+
+    scheduleIdleTransition(flowId)
+  }
+
+  const typeReply = (flowId: number, messageId: string, fullReply: string, durationMs: number) => {
     activeTypingMessageId = messageId
-    activeTypingFullText = fullReply
+    activeReplyFlowId = flowId
+    typingCompleted = false
 
     let index = 0
     const intervalMs = Math.max(
@@ -98,16 +128,19 @@ export function useDigitalHumanDemo() {
     )
 
     const tick = () => {
+      if (flowId !== activeFlowId) {
+        return
+      }
+
       const targetMessage = messages.value.find((message) => message.id === messageId)
       if (!targetMessage) {
         activeTypingMessageId = null
-        activeTypingFullText = ''
         return
       }
 
       index += 1
       targetMessage.content = fullReply.slice(0, index)
-      targetMessage.pending = false
+      targetMessage.pending = index < fullReply.length
 
       if (index < fullReply.length) {
         queueTimeout(tick, intervalMs)
@@ -115,17 +148,20 @@ export function useDigitalHumanDemo() {
       }
 
       activeTypingMessageId = null
-      activeTypingFullText = ''
       targetMessage.content = fullReply
       targetMessage.pending = false
+      typingCompleted = true
+      tryFinishReplyFlow(flowId)
     }
 
     tick()
   }
 
   const cancelCurrentFlow = () => {
+    activeFlowId += 1
     clearFlowTimers()
-    flushTypingMessage()
+    stopTypingMessage()
+    clearActiveReplyState()
     isRecording.value = false
     speechResult.value = null
     status.value = 'idle'
@@ -137,16 +173,24 @@ export function useDigitalHumanDemo() {
       pending: true,
       source,
     })
+    const flowId = activeFlowId + 1
 
+    activeFlowId = flowId
+    clearActiveReplyState()
     messages.value.push(assistantMessage)
     status.value = 'thinking'
 
     queueTimeout(() => {
+      if (flowId !== activeFlowId) {
+        return
+      }
+
       const synthesized = buildMockSpeechResult(reply)
       speechResult.value = synthesized
       speechToken.value += 1
       status.value = 'speaking'
-      typeReply(assistantMessage.id, reply, synthesized.durationMs)
+      speechCompleted = false
+      typeReply(flowId, assistantMessage.id, reply, synthesized.durationMs)
     }, RESPONSE_TIMING.thinkingMs)
   }
 
@@ -198,11 +242,13 @@ export function useDigitalHumanDemo() {
   }
 
   const handleSpeechComplete = () => {
-    clearFlowTimers()
-    speechResult.value = null
-    queueTimeout(() => {
-      status.value = 'idle'
-    }, RESPONSE_TIMING.speakingTailMs)
+    if (status.value !== 'speaking' || activeReplyFlowId !== activeFlowId) {
+      speechResult.value = null
+      return
+    }
+
+    speechCompleted = true
+    tryFinishReplyFlow(activeFlowId)
   }
 
   const expand = () => {
@@ -221,7 +267,7 @@ export function useDigitalHumanDemo() {
 
   onBeforeUnmount(() => {
     clearFlowTimers()
-    flushTypingMessage()
+    stopTypingMessage()
   })
 
   return {

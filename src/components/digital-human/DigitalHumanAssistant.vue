@@ -1,16 +1,16 @@
-<template>
+﻿<template>
   <section class="assistant-demo">
     <button
       v-if="!isExpanded"
       type="button"
       class="assistant-trigger"
-      aria-label="打开数字人助手"
+      aria-label="打开数字人小助"
       @click="expand"
     >
-      <img class="assistant-trigger__avatar" :src="manifest.fallbackPosterUrl || fallbackPosterUrl" alt="" />
+      <img class="assistant-trigger__avatar" :src="fallbackPosterUrl" alt="" />
       <span class="assistant-trigger__content">
-        <strong>数字人助手</strong>
-        <span>点击展开 Live2D 演示</span>
+        <strong>数字人小助</strong>
+        <span>点击展开智能问答</span>
       </span>
     </button>
 
@@ -31,7 +31,7 @@
           <button
             type="button"
             class="assistant-panel__icon-button"
-            aria-label="收起数字人助手"
+            aria-label="收起数字人小助"
             @click="collapse"
           >
             ×
@@ -40,27 +40,37 @@
       </header>
 
       <div class="assistant-panel__body">
-        <div class="assistant-panel__stage">
-          <Live2DStage
-            :manifest="manifest"
-            :state="status"
-            :speech-result="speechResult"
-            :autoplay-token="speechToken"
-            @speech-complete="handleSpeechComplete"
-          />
+        <VideoDigitalHumanStage
+          :state="status"
+          :speech-result="speechResult"
+          :autoplay-token="speechToken"
+          @speech-complete="handleSpeechComplete"
+        />
 
-          <div class="assistant-panel__summary">
-            <p class="assistant-panel__eyebrow">Live2D Demo</p>
-            <h1>实时对话 + 状态机 + 能量口型驱动</h1>
-            <p class="assistant-panel__description">
-              {{ latestAssistantText }}
-            </p>
-            <p class="assistant-panel__hint">
-              当前运行模式：{{ manifestModeLabel }}。项目已切到 `Live2D + Motion + 参数驱动`，后续只要替换正式模型包和
-              TTS 接口即可继续升级。
-            </p>
-          </div>
-        </div>
+        <section class="assistant-panel__chat-card">
+          <header class="assistant-panel__chat-header">
+            <div class="assistant-panel__llm-chip">
+              <span class="assistant-panel__llm-dot"></span>
+              <span>LLM 已接入</span>
+            </div>
+            <p class="assistant-panel__runtime-tip">{{ statusHint }}</p>
+          </header>
+
+          <section ref="messagesRef" class="assistant-messages">
+            <article
+              v-for="message in messages"
+              :key="message.id"
+              class="assistant-message"
+              :class="[`is-${message.role}`, { 'is-pending': message.pending }]"
+            >
+              <header class="assistant-message__meta">
+                <strong>{{ roleLabelMap[message.role] }}</strong>
+                <time>{{ formatTime(message.timestamp) }}</time>
+              </header>
+              <p>{{ message.content }}</p>
+            </article>
+          </section>
+        </section>
 
         <section class="assistant-suggestions">
           <button
@@ -74,28 +84,13 @@
           </button>
         </section>
 
-        <section ref="messagesRef" class="assistant-messages">
-          <article
-            v-for="message in messages"
-            :key="message.id"
-            class="assistant-message"
-            :class="[`is-${message.role}`, { 'is-pending': message.pending }]"
-          >
-            <header class="assistant-message__meta">
-              <strong>{{ roleLabelMap[message.role] }}</strong>
-              <time>{{ formatTime(message.timestamp) }}</time>
-            </header>
-            <p>{{ message.content }}</p>
-          </article>
-        </section>
-
         <footer class="assistant-input">
           <div class="assistant-input__field-wrap">
             <textarea
               v-model="inputText"
               class="assistant-input__field"
               rows="3"
-              placeholder="请输入你想演示的问题"
+              placeholder="输入问题..."
               :disabled="isRecording"
               @keydown="handleInputKeydown"
             ></textarea>
@@ -123,7 +118,7 @@
               :disabled="!hasInput || isRecording"
               @click="submitInput"
             >
-              发送问题
+              发送
             </button>
           </div>
         </footer>
@@ -133,13 +128,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import Live2DStage from './Live2DStage.vue'
-import { AVATAR_MANIFEST_URL, DEFAULT_AVATAR_MANIFEST } from './avatar-manifest'
-import type { AvatarManifest, DemoMessage } from './avatar-types'
+import { computed, nextTick, ref, watch } from 'vue'
+import type { DemoMessage } from './avatar-types'
 import { useDigitalHumanDemo } from './useDigitalHumanDemo'
+import VideoDigitalHumanStage from './VideoDigitalHumanStage.vue'
+import { VIDEO_POSTER_URL, VIDEO_STATUS_LABELS } from './video-avatar-config'
 
-const fallbackPosterUrl = '/digital-human/avatar.jpg'
+const fallbackPosterUrl = VIDEO_POSTER_URL
 
 const {
   clearConversation,
@@ -163,66 +158,29 @@ const {
   suggestions,
 } = useDigitalHumanDemo()
 
-const manifest = ref<AvatarManifest>(DEFAULT_AVATAR_MANIFEST)
-const manifestLoadedFromFile = ref(false)
 const messagesRef = ref<HTMLElement | null>(null)
 
-const statusLabel = computed(() => {
-  switch (status.value) {
-    case 'listening':
-      return '正在聆听'
-    case 'thinking':
-      return '正在思考'
-    case 'speaking':
-      return '正在回答'
-    default:
-      return '在线待命'
+const statusLabel = computed(() => VIDEO_STATUS_LABELS[status.value])
+const statusHint = computed(() => {
+  if (isRecording.value) {
+    return '录音中，松开后将自动发起提问。'
   }
-})
 
-const manifestModeLabel = computed(() =>
-  manifestLoadedFromFile.value ? '正式 manifest + Live2D 样例模型' : '默认 Live2D manifest 回退'
-)
+  if (status.value === 'speaking') {
+    return '回复正在流式输出，数字人同步播报中。'
+  }
+
+  if (status.value === 'thinking') {
+    return '正在模拟大模型思考，请稍候。'
+  }
+
+  return latestAssistantText.value
+})
 
 const roleLabelMap: Record<DemoMessage['role'], string> = {
   user: '你',
   assistant: '数字人',
   system: '系统',
-}
-
-const normalizeManifest = (incoming: Partial<AvatarManifest>): AvatarManifest => ({
-  ...DEFAULT_AVATAR_MANIFEST,
-  ...incoming,
-  textures: incoming.textures?.length ? incoming.textures : DEFAULT_AVATAR_MANIFEST.textures,
-  motions: {
-    ...DEFAULT_AVATAR_MANIFEST.motions,
-    ...(incoming.motions || {}),
-  },
-  expressions: incoming.expressions || DEFAULT_AVATAR_MANIFEST.expressions,
-  layout: {
-    ...DEFAULT_AVATAR_MANIFEST.layout,
-    ...(incoming.layout || {}),
-  },
-  parameters: {
-    ...DEFAULT_AVATAR_MANIFEST.parameters,
-    ...(incoming.parameters || {}),
-  },
-})
-
-const loadManifest = async () => {
-  try {
-    const response = await fetch(AVATAR_MANIFEST_URL, { cache: 'no-store' })
-    if (!response.ok) {
-      throw new Error(`manifest request failed: ${response.status}`)
-    }
-
-    const data = (await response.json()) as Partial<AvatarManifest>
-    manifest.value = normalizeManifest(data)
-    manifestLoadedFromFile.value = true
-  } catch {
-    manifest.value = DEFAULT_AVATAR_MANIFEST
-    manifestLoadedFromFile.value = false
-  }
 }
 
 const handleVoiceLeave = () => {
@@ -257,10 +215,6 @@ watch(
   },
   { deep: true }
 )
-
-onMounted(() => {
-  void loadManifest()
-})
 </script>
 
 <style scoped>
@@ -274,23 +228,23 @@ onMounted(() => {
 .assistant-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 14px;
-  min-width: 220px;
-  padding: 12px 14px 12px 12px;
+  gap: 12px;
+  min-width: 216px;
+  padding: 10px 14px 10px 10px;
   border: none;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.16);
+  box-shadow: 0 18px 42px rgba(70, 107, 165, 0.18);
   cursor: pointer;
 }
 
 .assistant-trigger__avatar {
-  width: 56px;
-  height: 56px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
   object-fit: cover;
   object-position: center top;
-  flex: none;
+  box-shadow: 0 10px 24px rgba(112, 144, 199, 0.2);
 }
 
 .assistant-trigger__content {
@@ -302,25 +256,29 @@ onMounted(() => {
 }
 
 .assistant-trigger__content strong {
-  font-size: 16px;
-  color: #0f172a;
+  font-size: 15px;
+  color: #20304d;
 }
 
 .assistant-trigger__content span {
-  font-size: 13px;
-  color: #64748b;
+  font-size: 12px;
+  color: #7283a1;
 }
 
 .assistant-panel {
-  width: min(430px, calc(100vw - 32px));
+  width: min(420px, calc(100vw - 32px));
   max-height: calc(100vh - 40px);
   display: flex;
   flex-direction: column;
-  padding: 16px;
+  padding: 16px 16px 14px;
   border-radius: 28px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 32px 80px rgba(15, 23, 42, 0.18);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(249, 251, 255, 0.98)),
+    rgba(255, 255, 255, 0.98);
+  box-shadow: 0 34px 84px rgba(62, 100, 160, 0.22);
+  border: 1px solid rgba(226, 234, 249, 0.95);
   backdrop-filter: blur(18px);
+  overflow: hidden;
 }
 
 .assistant-panel__header {
@@ -328,7 +286,7 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .assistant-panel__identity {
@@ -339,14 +297,15 @@ onMounted(() => {
 
 .assistant-panel__identity strong {
   display: block;
-  color: #0f172a;
+  color: #233352;
   font-size: 16px;
+  line-height: 1.1;
 }
 
 .assistant-panel__identity p {
   margin: 2px 0 0;
-  color: #64748b;
-  font-size: 13px;
+  color: #6f7f9b;
+  font-size: 12px;
 }
 
 .assistant-panel__status-dot {
@@ -368,122 +327,140 @@ onMounted(() => {
 }
 
 .assistant-panel__status-dot.is-speaking {
-  background: #2563eb;
-  box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.12);
+  background: #4f78ff;
+  box-shadow: 0 0 0 6px rgba(79, 120, 255, 0.14);
 }
 
 .assistant-panel__actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .assistant-panel__text-button,
 .assistant-panel__icon-button {
   border: none;
-  background: transparent;
   cursor: pointer;
 }
 
 .assistant-panel__text-button {
-  padding: 8px 10px;
+  padding: 9px 12px;
   border-radius: 999px;
-  color: #2563eb;
-  background: rgba(37, 99, 235, 0.08);
+  color: #5e83ef;
+  background: rgba(96, 133, 239, 0.12);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .assistant-panel__icon-button {
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   border-radius: 50%;
-  font-size: 22px;
-  color: #334155;
+  background: transparent;
+  font-size: 20px;
+  color: #5f6e88;
 }
 
 .assistant-panel__body {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   gap: 14px;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.assistant-panel__stage {
+.assistant-panel__chat-card {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 12px;
+  padding: 14px 14px 12px;
+  border-radius: 24px;
+  border: 1px solid rgba(226, 233, 248, 0.95);
+  background: linear-gradient(180deg, #ffffff, #f8fbff);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84);
+  min-height: 0;
 }
 
-.assistant-panel__summary {
+.assistant-panel__chat-header {
   display: grid;
   gap: 8px;
 }
 
-.assistant-panel__eyebrow {
-  margin: 0;
-  color: #2563eb;
+.assistant-panel__llm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(187, 213, 250, 0.9);
+  background: rgba(240, 247, 255, 0.9);
+  color: #5d85ef;
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
-.assistant-panel__summary h1 {
-  margin: 0;
-  color: #0f172a;
-  font-size: 24px;
-  line-height: 1.2;
+.assistant-panel__llm-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #33c47a;
+  box-shadow: 0 0 0 4px rgba(51, 196, 122, 0.14);
 }
 
-.assistant-panel__description,
-.assistant-panel__hint {
+.assistant-panel__runtime-tip {
   margin: 0;
-  color: #475569;
-  font-size: 14px;
+  color: #60718e;
+  font-size: 13px;
   line-height: 1.6;
-}
-
-.assistant-panel__hint {
-  padding: 10px 12px;
-  border-radius: 16px;
-  background: rgba(248, 250, 252, 0.96);
 }
 
 .assistant-suggestions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  align-content: flex-start;
+  padding: 2px 0 0;
+  max-height: 86px;
+  overflow-y: auto;
 }
 
 .assistant-suggestions__item {
-  padding: 9px 12px;
-  border: 1px solid rgba(148, 163, 184, 0.28);
+  padding: 9px 14px;
+  border: 1px solid rgba(194, 209, 241, 0.92);
   border-radius: 999px;
-  background: rgba(248, 250, 252, 0.9);
-  color: #334155;
+  background: rgba(248, 250, 255, 0.96);
+  color: #52637f;
+  font-size: 13px;
   cursor: pointer;
 }
 
 .assistant-messages {
-  min-height: 180px;
-  max-height: 240px;
+  min-height: 0;
+  max-height: none;
   display: flex;
   flex-direction: column;
   gap: 10px;
   overflow-y: auto;
-  padding-right: 4px;
+  padding-right: 6px;
 }
 
 .assistant-message {
   padding: 12px 14px;
   border-radius: 18px;
-  background: #f8fafc;
+  background: #f4f8ff;
 }
 
 .assistant-message.is-user {
   align-self: flex-end;
-  background: #2563eb;
+  background: linear-gradient(180deg, #6d92ff, #547bfb);
   color: #ffffff;
 }
 
 .assistant-message.is-system {
-  border: 1px dashed rgba(37, 99, 235, 0.24);
+  border: 1px dashed rgba(93, 133, 239, 0.28);
+  background: #fbfdff;
 }
 
 .assistant-message.is-pending {
@@ -518,8 +495,10 @@ onMounted(() => {
   display: grid;
   gap: 10px;
   padding: 12px;
-  border-radius: 20px;
-  background: #f8fafc;
+  border-radius: 22px;
+  border: 1px solid rgba(221, 230, 247, 0.95);
+  background: linear-gradient(180deg, #ffffff, #f8fbff);
+  box-shadow: 0 -10px 24px rgba(255, 255, 255, 0.92);
 }
 
 .assistant-input__field-wrap {
@@ -534,12 +513,12 @@ onMounted(() => {
   resize: none;
   outline: none;
   background: transparent;
-  color: #0f172a;
+  color: #233352;
   font-size: 14px;
 }
 
 .assistant-input__busy-tip {
-  color: #f97316;
+  color: #ef7e2f;
   font-size: 12px;
 }
 
@@ -559,20 +538,22 @@ onMounted(() => {
 .assistant-input__voice {
   flex: 1;
   min-height: 42px;
-  background: rgba(37, 99, 235, 0.08);
-  color: #1d4ed8;
+  background: rgba(95, 131, 238, 0.1);
+  color: #4166d5;
+  font-weight: 700;
 }
 
 .assistant-input__voice.is-recording {
-  background: rgba(249, 115, 22, 0.14);
-  color: #c2410c;
+  background: rgba(255, 156, 75, 0.16);
+  color: #ce6f20;
 }
 
 .assistant-input__send {
   min-width: 102px;
   min-height: 42px;
-  background: #0f172a;
+  background: linear-gradient(180deg, #6f91ff, #4f76fb);
   color: #ffffff;
+  font-weight: 700;
 }
 
 .assistant-input__voice:disabled,
@@ -594,6 +575,18 @@ onMounted(() => {
     width: 100%;
     max-height: none;
     margin-top: 16px;
+    overflow: visible;
+  }
+
+  .assistant-panel__body {
+    grid-template-rows: auto auto auto auto;
+    overflow: visible;
+  }
+
+  .assistant-panel__chat-card,
+  .assistant-suggestions {
+    min-height: auto;
+    max-height: none;
   }
 }
 
@@ -606,11 +599,15 @@ onMounted(() => {
 
   .assistant-trigger {
     width: 100%;
-    justify-content: center;
   }
 
   .assistant-panel {
     width: 100%;
+    padding: 14px;
+  }
+
+  .assistant-panel__text-button {
+    padding-inline: 10px;
   }
 }
 </style>

@@ -1,10 +1,4 @@
-import type {
-  AvatarState,
-  AvatarVisemeCode,
-  DemoMessage,
-  SpeechSynthesisResult,
-  SpeechViseme,
-} from './avatar-types'
+﻿import type { AvatarState, DemoMessage, SpeechSynthesisResult } from './avatar-types'
 
 export type DigitalHumanStatus = AvatarState
 export type { DemoMessage }
@@ -23,104 +17,47 @@ export const VOICE_PROMPTS = [
 ]
 
 export const SYSTEM_WELCOME =
-  '你好，我是数字人小助手，可以为你演示智能问答、实时发声、状态切换和基础语音交互流程。'
+  '你好，我是数字人小助，当前版本会模拟 LLM 实时问答、录音交互、流式回复和语音播报。'
 
 export const RESPONSE_TIMING = {
   thinkingMs: 960,
-  typingIntervalMs: 22,
+  typingIntervalMs: 24,
   speakingTailMs: 420,
   minimumSpeakingMs: 1800,
   msPerCharacter: 105,
-  visemeStepMs: 96,
 }
 
 const REPLY_LIBRARY = [
   {
     keywords: ['预算', '绩效'],
     reply:
-      '预算绩效通常可以按目标拆解、预算编制、执行跟踪、绩效评价四个阶段来理解。当前展示版先演示问答与状态切换，后续可以接入真实业务知识库。',
+      '预算绩效通常可以按目标拆解、预算编制、执行跟踪和结果评价四个阶段来理解。当前演示版先聚焦数字人交互链路，后续可以继续接入真实知识库和业务接口。',
   },
   {
     keywords: ['立项', '审批'],
     reply:
-      '项目立项审批一般需要准备项目背景、目标、预算明细、时间计划和审批流角色信息。后续接入真实接口后，可以进一步联动表单或系统菜单。',
+      '项目立项审批一般需要准备项目背景、目标、预算明细、时间安排和审批角色信息。等正式接口接入后，数字人可以继续联动表单、菜单和审批流节点。',
   },
   {
     keywords: ['事后评价', '评价'],
     reply:
-      '事后评价通常包含资料归档、指标复盘、结果分析和改进建议四部分。当前版本会先模拟数字人思考与说话状态，帮助确认前端交互形态。',
+      '事后评价通常包含资料归档、指标复盘、结果分析和改进建议四部分。现在这版会先模拟数字人思考、播报和流式输出，帮助确认前端交互形态。',
   },
   {
     keywords: ['系统管理', '入口', '模块'],
     reply:
-      '系统管理入口通常会放在导航栏右侧或工作台首页的高频模块区域。当前方案优先落一个可独立展示的助手组件，方便后续嵌入真实后台。',
+      '系统管理入口通常会放在导航栏右侧或工作台首页的高频模块区域。当前方案优先落成一个独立数字人助手，方便后续嵌入真实后台页面。',
   },
 ]
 
-const ENERGY_VISEME_CODES: AvatarVisemeCode[] = ['A', 'E', 'O', 'U', 'FV', 'L', 'MBP']
-
-const pickVisemeCode = (character: string, index: number): AvatarVisemeCode => {
-  if (/[mbpf]/i.test(character)) {
-    return 'MBP'
-  }
-
-  if (/[ou]/i.test(character)) {
-    return 'O'
-  }
-
-  if (/[ei]/i.test(character)) {
-    return 'E'
-  }
-
-  if (/[fv]/i.test(character)) {
-    return 'FV'
-  }
-
-  if (/[lnr]/i.test(character)) {
-    return 'L'
-  }
-
-  return ENERGY_VISEME_CODES[index % ENERGY_VISEME_CODES.length]
-}
-
 export const buildMockSpeechResult = (text: string): SpeechSynthesisResult => {
   const normalizedText = text.trim()
-  const baseDuration = Math.max(
-    RESPONSE_TIMING.minimumSpeakingMs,
-    normalizedText.length * RESPONSE_TIMING.msPerCharacter
-  )
-  const startPadding = 120
-  const endPadding = 180
-  const characters = normalizedText.replace(/\s+/g, '').split('')
-  const visemes: SpeechViseme[] = []
-
-  if (characters.length > 0) {
-    const availableSpeakingMs = Math.max(
-      RESPONSE_TIMING.visemeStepMs,
-      baseDuration - startPadding - endPadding
-    )
-    const durationPerCharacter = Math.max(
-      RESPONSE_TIMING.visemeStepMs,
-      Math.floor(availableSpeakingMs / characters.length)
-    )
-
-    let cursor = startPadding
-    characters.forEach((character, index) => {
-      const nextCursor = Math.min(baseDuration - endPadding, cursor + durationPerCharacter)
-      visemes.push({
-        startMs: cursor,
-        endMs: nextCursor,
-        code: pickVisemeCode(character, index),
-      })
-      cursor = nextCursor
-    })
-  }
+  const baseDuration = Math.max(RESPONSE_TIMING.minimumSpeakingMs, normalizedText.length * RESPONSE_TIMING.msPerCharacter)
 
   return {
     text: normalizedText,
     audioUrl: '',
     durationMs: baseDuration,
-    visemes,
     playbackMode: 'energy',
     generatedAt: Date.now(),
   }
@@ -135,6 +72,6 @@ export function buildDemoReply(question: string) {
 
   return (
     matchedReply?.reply ??
-    '我已经收到你的问题。当前版本是前端展示版，会用本地演示数据完成一次数字人应答流程，后续可以继续接入真实的 ASR、TTS 和大模型能力。'
+    '我已经收到你的问题。当前版本会先用本地模拟数据跑通数字人问答流程，后续可以继续接入真实的 ASR、TTS 和大模型能力。'
   )
 }
