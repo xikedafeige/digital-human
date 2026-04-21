@@ -23,7 +23,6 @@
     <div class="video-stage__badge">
       <span class="video-stage__badge-dot" :class="`is-${state}`"></span>
       <span>{{ statusLabel }}</span>
-      <em>{{ runtimeLabel }}</em>
     </div>
   </div>
 </template>
@@ -33,7 +32,6 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import type { AvatarState, SpeechSynthesisResult } from './avatar-types'
 import {
   VIDEO_POSTER_URL,
-  VIDEO_RUNTIME_LABEL,
   VIDEO_STAGE_SOURCES,
   VIDEO_STATUS_LABELS,
 } from './video-avatar-config'
@@ -43,7 +41,6 @@ interface Props {
   speechResult?: SpeechSynthesisResult | null
   autoplayToken?: number
   posterUrl?: string
-  runtimeLabel?: string
   videoSources?: Partial<Record<AvatarState, string>>
 }
 
@@ -51,7 +48,6 @@ const props = withDefaults(defineProps<Props>(), {
   speechResult: null,
   autoplayToken: 0,
   posterUrl: VIDEO_POSTER_URL,
-  runtimeLabel: VIDEO_RUNTIME_LABEL,
   videoSources: () => VIDEO_STAGE_SOURCES,
 })
 
@@ -368,11 +364,6 @@ onBeforeUnmount(() => {
 .video-stage__badge-dot.is-speaking {
   background: #4f78ff;
   box-shadow: 0 0 0 3px rgba(79, 120, 255, 0.12);
-}
-
-.video-stage__badge em {
-  font-style: normal;
-  color: #5d86ef;
 }
 
 @media (max-height: 820px) and (min-width: 641px) {

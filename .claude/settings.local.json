@@ -3,7 +3,9 @@
     "allow": [
       "WebFetch(domain:minimax-algeng-chat-tts.oss-cn-wulanchabu.aliyuncs.com)",
       "Bash(curl -s \"https://minimax-algeng-chat-tts.oss-cn-wulanchabu.aliyuncs.com/ccv2%2F2026-03-30%2FMiniMax-M2.5%2F1940344828810236111%2F73ae42668dffd82e254dbee0808cb69f14fc7b3678858c6c5c169bfb6615f3b0..png?Expires=1774924344&OSSAccessKeyId=LTAI5tGLnRTkBjLuYPjNcKQ8&Signature=d3CrXmMB6f%2FvmB79U1QH7cTagsY%3D\" -o /tmp/req.png)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Read(//d/code/szxq/copilot-toolbox/src/utils/**)",
+      "Read(//d/code/szxq/copilot-toolbox/**)"
     ]
   }
 }

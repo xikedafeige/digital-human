@@ -1,7 +1,6 @@
 import type { AvatarState } from './avatar-types'
 
 export const VIDEO_POSTER_URL = '/digital-human/avatar.jpg'
-export const VIDEO_RUNTIME_LABEL = 'Video Runtime'
 
 export const VIDEO_STAGE_SOURCES: Record<AvatarState, string> = {
   idle: '/videos/等待1.mp4',

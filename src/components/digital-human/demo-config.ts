@@ -10,12 +10,6 @@ export const DIGITAL_HUMAN_SUGGESTIONS = [
   '系统管理入口通常在哪里？',
 ]
 
-export const VOICE_PROMPTS = [
-  '请帮我介绍一下预算绩效的工作流程。',
-  '我想知道项目管理模块一般从哪里进入。',
-  '请告诉我事后评价要准备哪些资料。',
-]
-
 export const SYSTEM_WELCOME =
   '你好，我是数字人小助，当前版本会模拟 LLM 实时问答、录音交互、流式回复和语音播报。'
 

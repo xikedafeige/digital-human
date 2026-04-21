@@ -5,9 +5,9 @@ import {
   DIGITAL_HUMAN_SUGGESTIONS,
   RESPONSE_TIMING,
   SYSTEM_WELCOME,
-  VOICE_PROMPTS,
 } from './demo-config'
 import type { AvatarState, DemoMessage, SpeechSynthesisResult } from './avatar-types'
+import { useSpeechRecognition } from './useSpeechRecognition'
 
 const createMessage = (
   role: DemoMessage['role'],
@@ -42,13 +42,21 @@ export function useDigitalHumanDemo() {
     return latestAssistantMessage?.content ?? SYSTEM_WELCOME
   })
 
-  let voicePromptIndex = 0
   let activeFlowId = 0
   let activeTypingMessageId: string | null = null
   let flowTimers: number[] = []
   let activeReplyFlowId = 0
   let typingCompleted = false
   let speechCompleted = false
+  const speechRecognition = useSpeechRecognition({
+    onPartial: (text) => {
+      inputText.value = text
+    },
+    onSegment: (text) => {
+      inputText.value = text
+    },
+    onError: () => {},
+  })
 
   const clearFlowTimers = () => {
     flowTimers.forEach((timer) => window.clearTimeout(timer))
@@ -214,7 +222,7 @@ export function useDigitalHumanDemo() {
     sendText(inputText.value, 'text')
   }
 
-  const startVoiceInput = () => {
+  const startVoiceInput = async () => {
     if (isRecording.value) {
       return
     }
@@ -227,18 +235,34 @@ export function useDigitalHumanDemo() {
     clearFlowTimers()
     isRecording.value = true
     status.value = 'listening'
+    inputText.value = ''
+
+    try {
+      await speechRecognition.start()
+    } catch {
+      isRecording.value = false
+      status.value = 'idle'
+    }
   }
 
-  const stopVoiceInput = () => {
+  const stopVoiceInput = async () => {
     if (!isRecording.value) {
       return
     }
 
     isRecording.value = false
     status.value = 'idle'
-    const prompt = VOICE_PROMPTS[voicePromptIndex % VOICE_PROMPTS.length]
-    voicePromptIndex += 1
-    sendText(prompt, 'voice')
+
+    const recognizedText = await speechRecognition.stop()
+    const fallbackText = inputText.value.trim()
+    const question = recognizedText || fallbackText
+
+    if (question) {
+      sendText(question, 'voice')
+      return
+    }
+
+    inputText.value = ''
   }
 
   const handleSpeechComplete = () => {
