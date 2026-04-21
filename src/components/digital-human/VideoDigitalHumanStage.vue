@@ -333,43 +333,44 @@ onBeforeUnmount(() => {
 
 .video-stage__badge {
   position: absolute;
-  left: 18px;
-  bottom: 18px;
+  left: 12px;
+  bottom: 12px;
   z-index: 3;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
+  gap: 6px;
+  padding: 6px 9px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(193, 214, 248, 0.95);
-  box-shadow: 0 12px 30px rgba(92, 135, 204, 0.16);
+  border: 1px solid rgba(210, 222, 240, 0.86);
+  box-shadow: 0 8px 18px rgba(92, 135, 204, 0.1);
   color: #3b4a66;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 600;
+  line-height: 1;
 }
 
 .video-stage__badge-dot {
-  width: 10px;
-  height: 10px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: #22c55e;
-  box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.12);
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1);
 }
 
 .video-stage__badge-dot.is-listening {
   background: #38bdf8;
-  box-shadow: 0 0 0 5px rgba(56, 189, 248, 0.14);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
 }
 
 .video-stage__badge-dot.is-thinking {
   background: #f59e0b;
-  box-shadow: 0 0 0 5px rgba(245, 158, 11, 0.14);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.12);
 }
 
 .video-stage__badge-dot.is-speaking {
   background: #4f78ff;
-  box-shadow: 0 0 0 5px rgba(79, 120, 255, 0.14);
+  box-shadow: 0 0 0 3px rgba(79, 120, 255, 0.12);
 }
 
 .video-stage__badge em {
@@ -383,16 +384,16 @@ onBeforeUnmount(() => {
   }
 
   .video-stage__badge {
-    left: 12px;
-    bottom: 12px;
-    gap: 7px;
-    padding: 7px 10px;
-    font-size: 11px;
+    left: 10px;
+    bottom: 10px;
+    gap: 5px;
+    padding: 5px 8px;
+    font-size: 10px;
   }
 
   .video-stage__badge-dot {
-    width: 8px;
-    height: 8px;
+    width: 5px;
+    height: 5px;
   }
 }
 </style>
