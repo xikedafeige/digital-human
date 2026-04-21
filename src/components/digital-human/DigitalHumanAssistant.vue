@@ -57,10 +57,8 @@
 							:disabled="isRecording" @keydown="handleInputKeydown"></textarea>
 
 						<button type="button" class="assistant-input__voice-icon" :class="{ 'is-recording': isRecording }"
-							:aria-label="isRecording ? '松开结束' : '按住说话'" :title="isRecording ? '松开结束' : '按住说话'"
-							@mousedown.prevent="startVoiceInput" @mouseup.prevent="stopVoiceInput" @mouseleave="handleVoiceLeave"
-							@touchstart.prevent="startVoiceInput" @touchend.prevent="stopVoiceInput"
-							@touchcancel.prevent="stopVoiceInput">
+							:aria-label="isRecording ? '停止录音' : '开始录音'" :title="isRecording ? '停止录音' : '开始录音'"
+							@click="toggleVoiceInput">
 							<svg v-if="!isRecording" viewBox="0 0 24 24" aria-hidden="true">
 								<path
 									d="M12 14.5c1.7 0 3-1.3 3-3V6.8c0-1.7-1.3-3-3-3s-3 1.3-3 3v4.7c0 1.7 1.3 3 3 3Z" />
@@ -115,7 +113,7 @@ const messagesRef = ref<HTMLElement | null>(null)
 const statusLabel = computed(() => VIDEO_STATUS_LABELS[status.value])
 const statusHint = computed(() => {
 	if (isRecording.value) {
-		return '录音中，松开后将自动发起提问。'
+		return '录音中，再次点击麦克风后将自动发起提问。'
 	}
 
 	if (status.value === 'speaking') {
@@ -135,10 +133,13 @@ const roleLabelMap: Record<DemoMessage['role'], string> = {
 	system: '系统',
 }
 
-const handleVoiceLeave = () => {
+const toggleVoiceInput = () => {
 	if (isRecording.value) {
 		stopVoiceInput()
+		return
 	}
+
+	startVoiceInput()
 }
 
 const handleInputKeydown = (event: KeyboardEvent) => {
