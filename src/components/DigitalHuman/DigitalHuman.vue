@@ -28,38 +28,22 @@
 
 				<div class="assistant-stage" :class="`is-${visualVideoState}`">
 					<div class="assistant-stage__backdrop">
-						<div
-							v-for="state in videoStates"
-							:key="`backdrop-${state}`"
-							class="assistant-stage__backdrop-layer"
-							:class="[
-								`is-${state}`,
-								{ 'is-active': visualVideoState === state }
-							]"
-						></div>
+						<div v-for="state in videoStates" :key="`backdrop-${state}`" class="assistant-stage__backdrop-layer" :class="[
+							`is-${state}`,
+							{ 'is-active': visualVideoState === state }
+						]"></div>
 						<div class="assistant-stage__backdrop-mesh"></div>
 						<div class="assistant-stage__backdrop-floor"></div>
 					</div>
 
 					<div class="assistant-stage__media">
-						<video
-							v-for="state in videoStates"
-							:key="state"
-							:ref="(element) => setVideoRef(state, element as HTMLVideoElement | null)"
-							class="assistant-stage__video"
+						<video v-for="state in videoStates" :key="state"
+							:ref="(element) => setVideoRef(state, element as HTMLVideoElement | null)" class="assistant-stage__video"
 							:class="{
 								'is-active': visualVideoState === state,
 								'is-ready': readyStates[state]
-							}"
-							:style="videoFrameStyles[state]"
-							:src="videoSources[state]"
-							muted
-							loop
-							autoplay
-							playsinline
-							preload="auto"
-							@canplay="handleVideoReady(state)"
-						></video>
+							}" :style="videoFrameStyles[state]" :src="videoSources[state]" muted loop autoplay playsinline preload="auto"
+							@canplay="handleVideoReady(state)"></video>
 					</div>
 
 					<div v-if="!activeVideoReady" class="assistant-stage__loading">
@@ -75,41 +59,23 @@
 				<section class="assistant-prompts">
 					<p class="assistant-prompts__label">试试这样问：</p>
 
-					<button
-						v-for="item in suggestions"
-						:key="item"
-						type="button"
-						class="assistant-prompts__item"
-						@click="handleSuggestion(item)"
-					>
+					<button v-for="item in suggestions" :key="item" type="button" class="assistant-prompts__item"
+						@click="handleSuggestion(item)">
 						{{ item }}
 					</button>
 				</section>
 
 				<footer class="assistant-input" :class="{ 'has-input': hasInput }">
-					<textarea
-						v-model="inputText"
-						class="assistant-input__field"
-						placeholder="输入问题"
-						rows="3"
-						@keydown="handleInputKeydown"
-					></textarea>
+					<textarea v-model="inputText" class="assistant-input__field" placeholder="输入问题" rows="3"
+						@keydown="handleInputKeydown"></textarea>
 
-					<button
-						type="button"
-						class="assistant-input__mic"
-						:class="{
-							'is-left': hasInput,
-							'is-right': !hasInput,
-							'is-recording': isRecording
-						}"
-						aria-label="按住说话"
-						@mousedown.prevent="store.startListening()"
-						@mouseup.prevent="store.stopListening()"
-						@mouseleave="handleMicLeave"
-						@touchstart.prevent="store.startListening()"
-						@touchend.prevent="store.stopListening()"
-					>
+					<button type="button" class="assistant-input__mic" :class="{
+						'is-left': hasInput,
+						'is-right': !hasInput,
+						'is-recording': isRecording
+					}" aria-label="按住说话" @mousedown.prevent="store.startListening()" @mouseup.prevent="store.stopListening()"
+						@mouseleave="handleMicLeave" @touchstart.prevent="store.startListening()"
+						@touchend.prevent="store.stopListening()">
 						<span class="assistant-input__mic-icon"></span>
 					</button>
 
@@ -117,8 +83,7 @@
 						<svg viewBox="0 0 20 20" aria-hidden="true">
 							<path
 								d="M4.79 3.64a1 1 0 0 1 1.08-.18l9.03 4.27a1 1 0 0 1 0 1.81L5.87 13.8a1 1 0 0 1-1.4-1.04l.58-3.1a.7.7 0 0 0 0-.25l-.58-3.1a1 1 0 0 1 .32-.97Z"
-								fill="currentColor"
-							/>
+								fill="currentColor" />
 							<path d="M5.18 9.06h5.88" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
 						</svg>
 					</button>
@@ -139,10 +104,10 @@ const { assistantText, chatStatus, inputText, isExpanded, isRecording, suggestio
 const videoStates: ChatStatus[] = ['idle', 'listening', 'thinking', 'speaking']
 
 const videoSources: Record<ChatStatus, string> = {
-	idle: '/videos/idle.mp4',
-	listening: '/videos/listening.mp4',
-	thinking: '/videos/thinking.mp4',
-	speaking: '/videos/speaking.mp4'
+	idle: '/videos/idle2.mp4',
+	listening: '/videos/listening2.mp4',
+	thinking: '/videos/listening2.mp4',
+	speaking: '/videos/speaking2.mp4'
 }
 
 const createVideoFrameStyle = (

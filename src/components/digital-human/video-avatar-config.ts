@@ -4,10 +4,10 @@ export const VIDEO_POSTER_URL = '/digital-human/avatar.jpg'
 export const VIDEO_RUNTIME_LABEL = 'Video Runtime'
 
 export const VIDEO_STAGE_SOURCES: Record<AvatarState, string> = {
-  idle: '/digital-human/idle.mp4',
-  listening: '/digital-human/listening.mp4',
-  thinking: '/digital-human/thinking.mp4',
-  speaking: '/digital-human/speaking.mp4',
+  idle: '/videos/idle2.mp4',
+  listening: '/videos/listening2.mp4',
+  thinking: '/videos/listening2.mp4',
+  speaking: '/videos/speaking2.mp4',
 }
 
 export const VIDEO_STATUS_LABELS: Record<AvatarState, string> = {

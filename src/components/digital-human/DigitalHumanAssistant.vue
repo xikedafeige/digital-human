@@ -220,8 +220,8 @@ watch(
 <style scoped>
 .assistant-demo {
   position: fixed;
-  top: 20px;
-  right: 20px;
+  top: clamp(12px, 2dvh, 20px);
+  right: clamp(12px, 2dvw, 20px);
   z-index: 40;
 }
 
@@ -266,8 +266,9 @@ watch(
 }
 
 .assistant-panel {
-  width: min(420px, calc(100vw - 32px));
-  max-height: calc(100vh - 40px);
+  width: min(420px, calc(100vw - 24px));
+  height: min(780px, calc(100dvh - 24px));
+  max-height: calc(100dvh - 24px);
   display: flex;
   flex-direction: column;
   padding: 16px 16px 14px;
@@ -363,8 +364,9 @@ watch(
 }
 
 .assistant-panel__body {
+  flex: 1;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-rows: minmax(220px, 0.82fr) minmax(136px, 1fr) auto auto;
   gap: 14px;
   min-height: 0;
   overflow: hidden;
@@ -380,6 +382,7 @@ watch(
   background: linear-gradient(180deg, #ffffff, #f8fbff);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84);
   min-height: 0;
+  overflow: hidden;
 }
 
 .assistant-panel__chat-header {
@@ -422,7 +425,7 @@ watch(
   gap: 8px;
   align-content: flex-start;
   padding: 2px 0 0;
-  max-height: 86px;
+  max-height: min(86px, 12dvh);
   overflow-y: auto;
 }
 
@@ -573,6 +576,7 @@ watch(
 
   .assistant-panel {
     width: 100%;
+    height: auto;
     max-height: none;
     margin-top: 16px;
     overflow: visible;
@@ -587,6 +591,81 @@ watch(
   .assistant-suggestions {
     min-height: auto;
     max-height: none;
+  }
+}
+
+@media (max-height: 820px) and (min-width: 641px) {
+  .assistant-panel {
+    width: min(390px, calc(100vw - 24px));
+    padding: 12px;
+    border-radius: 24px;
+  }
+
+  .assistant-panel__header {
+    margin-bottom: 10px;
+  }
+
+  .assistant-panel__body {
+    grid-template-rows: minmax(210px, 0.72fr) minmax(128px, 1fr) auto auto;
+    gap: 10px;
+  }
+
+  .assistant-panel__chat-card {
+    gap: 8px;
+    padding: 10px;
+    border-radius: 18px;
+  }
+
+  .assistant-panel__chat-header {
+    gap: 6px;
+  }
+
+  .assistant-panel__llm-chip {
+    padding: 6px 10px;
+  }
+
+  .assistant-panel__runtime-tip {
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .assistant-suggestions {
+    max-height: 46px;
+  }
+
+  .assistant-suggestions__item {
+    padding: 7px 11px;
+    font-size: 12px;
+  }
+
+  .assistant-message {
+    padding: 9px 11px;
+    border-radius: 14px;
+  }
+
+  .assistant-message__meta {
+    margin-bottom: 5px;
+  }
+
+  .assistant-message p {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .assistant-input {
+    gap: 8px;
+    padding: 10px;
+    border-radius: 18px;
+  }
+
+  .assistant-input__field {
+    min-height: 56px;
+    font-size: 13px;
+  }
+
+  .assistant-input__voice,
+  .assistant-input__send {
+    min-height: 36px;
   }
 }
 

@@ -255,7 +255,8 @@ onBeforeUnmount(() => {
 <style scoped>
 .video-stage {
   position: relative;
-  min-height: 330px;
+  min-height: clamp(210px, 34dvh, 330px);
+  height: 100%;
   overflow: hidden;
   border-radius: 28px;
   background:
@@ -389,5 +390,24 @@ onBeforeUnmount(() => {
 .video-stage__badge em {
   font-style: normal;
   color: #5d86ef;
+}
+
+@media (max-height: 820px) and (min-width: 641px) {
+  .video-stage {
+    border-radius: 22px;
+  }
+
+  .video-stage__badge {
+    left: 12px;
+    bottom: 12px;
+    gap: 7px;
+    padding: 7px 10px;
+    font-size: 11px;
+  }
+
+  .video-stage__badge-dot {
+    width: 8px;
+    height: 8px;
+  }
 }
 </style>
