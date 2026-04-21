@@ -316,19 +316,16 @@ onBeforeUnmount(() => {
   object-fit: contain;
   object-position: center bottom;
   opacity: 0;
-  transform: translate3d(0, 4px, 0) scale(1.01);
-  transition:
-    opacity 680ms ease,
-    transform 680ms cubic-bezier(0.22, 1, 0.36, 1),
-    filter 680ms ease;
-  filter: saturate(0.99);
-  will-change: opacity, transform;
+  transform: none;
+  transition: opacity 180ms ease;
+  filter: none;
+  will-change: opacity;
 }
 
 .video-stage__video.is-ready.is-active {
   opacity: 1;
-  transform: translate3d(0, 0, 0) scale(1);
-  filter: saturate(1);
+  transform: none;
+  filter: none;
 }
 
 .video-stage__badge {
