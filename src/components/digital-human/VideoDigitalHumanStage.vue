@@ -1,11 +1,5 @@
 <template>
   <div class="video-stage" :class="`is-${state}`">
-    <div class="video-stage__backdrop">
-      <div class="video-stage__glow"></div>
-      <div class="video-stage__grid"></div>
-      <div class="video-stage__floor"></div>
-    </div>
-
     <div class="video-stage__media">
       <video
         v-for="stageState in stageStates"
@@ -24,10 +18,6 @@
         preload="auto"
         @canplay="handleVideoReady(stageState)"
       ></video>
-
-      <div v-if="!activeVideoReady" class="video-stage__fallback">
-        <img class="video-stage__fallback-image" :src="posterUrl" alt="" />
-      </div>
     </div>
 
     <div class="video-stage__badge">
@@ -93,7 +83,6 @@ const resolvedVideoSources = computed<Record<AvatarState, string>>(() => ({
   ...VIDEO_STAGE_SOURCES,
   ...props.videoSources,
 }))
-const activeVideoReady = computed(() => readyStates[visualState.value])
 const statusLabel = computed(() => VIDEO_STATUS_LABELS[props.state])
 
 const clearSpeechTimer = () => {
@@ -190,8 +179,52 @@ const playAllVideos = () => {
   })
 }
 
-const syncVisualState = (state: AvatarState) => {
-  void playVideo(videoRefs[state], state !== 'idle')
+let visualTransitionId = 0
+
+const waitForDrawableFrame = (video: HTMLVideoElement | null) =>
+  new Promise<void>((resolve) => {
+    if (!video || video.readyState >= 2) {
+      resolve()
+      return
+    }
+
+    let settled = false
+    let fallbackTimer: number | null = null
+
+    const cleanup = () => {
+      video.removeEventListener('loadeddata', finish)
+      video.removeEventListener('canplay', finish)
+
+      if (fallbackTimer !== null) {
+        window.clearTimeout(fallbackTimer)
+      }
+    }
+
+    const finish = () => {
+      if (settled) {
+        return
+      }
+
+      settled = true
+      cleanup()
+      resolve()
+    }
+
+    video.addEventListener('loadeddata', finish)
+    video.addEventListener('canplay', finish)
+    fallbackTimer = window.setTimeout(finish, 220)
+  })
+
+const syncVisualState = async (state: AvatarState) => {
+  const transitionId = ++visualTransitionId
+  const targetVideo = videoRefs[state]
+
+  await playVideo(targetVideo, state !== 'idle')
+  await waitForDrawableFrame(targetVideo)
+
+  if (transitionId !== visualTransitionId) {
+    return
+  }
 
   if (state === visualState.value) {
     pendingState.value = null
@@ -205,7 +238,9 @@ const syncVisualState = (state: AvatarState) => {
 
   pendingState.value = null
   window.requestAnimationFrame(() => {
-    visualState.value = state
+    if (transitionId === visualTransitionId) {
+      visualState.value = state
+    }
   })
 }
 
@@ -214,14 +249,14 @@ const handleVideoReady = (state: AvatarState) => {
   void playVideo(videoRefs[state])
 
   if (pendingState.value === state) {
-    syncVisualState(state)
+    void syncVisualState(state)
   }
 }
 
 watch(
   () => props.state,
   (nextState) => {
-    syncVisualState(nextState)
+    void syncVisualState(nextState)
 
     if (nextState !== 'speaking') {
       stopSpeechPlayback()
@@ -244,7 +279,7 @@ watch(
 onMounted(() => {
   visualState.value = props.state
   playAllVideos()
-  syncVisualState(props.state)
+  void syncVisualState(props.state)
 })
 
 onBeforeUnmount(() => {
@@ -259,52 +294,14 @@ onBeforeUnmount(() => {
   height: 100%;
   overflow: hidden;
   border-radius: 28px;
-  background:
-    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.96), rgba(228, 239, 255, 0.96) 38%, rgba(195, 218, 249, 0.96) 100%);
-  border: 1px solid rgba(185, 210, 247, 0.9);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.82),
-    0 16px 36px rgba(94, 138, 214, 0.18);
+  background: #fafaf8;
+  border: 1px solid rgba(232, 232, 228, 0.95);
+  box-shadow: 0 16px 36px rgba(94, 104, 120, 0.1);
 }
 
-.video-stage__backdrop,
-.video-stage__media,
-.video-stage__fallback {
+.video-stage__media {
   position: absolute;
   inset: 0;
-}
-
-.video-stage__backdrop {
-  pointer-events: none;
-}
-
-.video-stage__glow {
-  position: absolute;
-  inset: 14% 18% auto;
-  height: 44%;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.94), transparent 74%);
-  filter: blur(18px);
-}
-
-.video-stage__grid {
-  position: absolute;
-  inset: auto 0 0;
-  height: 38%;
-  background:
-    linear-gradient(transparent 0, rgba(255, 255, 255, 0.3) 100%),
-    repeating-linear-gradient(90deg, rgba(88, 143, 230, 0.11) 0 1px, transparent 1px 36px),
-    repeating-linear-gradient(0deg, rgba(88, 143, 230, 0.11) 0 1px, transparent 1px 28px);
-  mask-image: linear-gradient(180deg, transparent, #000 18%);
-}
-
-.video-stage__floor {
-  position: absolute;
-  inset: auto 16% 10%;
-  height: 42px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(86, 138, 220, 0.22), rgba(86, 138, 220, 0.04) 62%, transparent 78%);
-  filter: blur(10px);
 }
 
 .video-stage__media {
@@ -319,31 +316,19 @@ onBeforeUnmount(() => {
   object-fit: contain;
   object-position: center bottom;
   opacity: 0;
-  transform: translate3d(0, 18px, 0) scale(1.04);
+  transform: translate3d(0, 4px, 0) scale(1.01);
   transition:
-    opacity 360ms ease,
-    transform 360ms cubic-bezier(0.22, 1, 0.36, 1),
-    filter 360ms ease;
-  filter: blur(12px) saturate(0.96);
+    opacity 680ms ease,
+    transform 680ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 680ms ease;
+  filter: saturate(0.99);
+  will-change: opacity, transform;
 }
 
 .video-stage__video.is-ready.is-active {
   opacity: 1;
   transform: translate3d(0, 0, 0) scale(1);
-  filter: blur(0) saturate(1);
-}
-
-.video-stage__fallback {
-  display: grid;
-  place-items: center;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.58));
-}
-
-.video-stage__fallback-image {
-  width: min(78%, 320px);
-  max-height: 88%;
-  object-fit: contain;
-  filter: drop-shadow(0 20px 42px rgba(96, 135, 204, 0.22));
+  filter: saturate(1);
 }
 
 .video-stage__badge {

@@ -1,20 +1,6 @@
 ﻿<template>
   <section class="assistant-demo">
-    <button
-      v-if="!isExpanded"
-      type="button"
-      class="assistant-trigger"
-      aria-label="打开数字人小助"
-      @click="expand"
-    >
-      <img class="assistant-trigger__avatar" :src="fallbackPosterUrl" alt="" />
-      <span class="assistant-trigger__content">
-        <strong>数字人小助</strong>
-        <span>点击展开智能问答</span>
-      </span>
-    </button>
-
-    <div v-else class="assistant-panel">
+    <div class="assistant-panel">
       <header class="assistant-panel__header">
         <div class="assistant-panel__identity">
           <span class="assistant-panel__status-dot" :class="`is-${status}`"></span>
@@ -27,14 +13,6 @@
         <div class="assistant-panel__actions">
           <button type="button" class="assistant-panel__text-button" @click="clearConversation">
             清空
-          </button>
-          <button
-            type="button"
-            class="assistant-panel__icon-button"
-            aria-label="收起数字人小助"
-            @click="collapse"
-          >
-            ×
           </button>
         </div>
       </header>
@@ -132,19 +110,14 @@ import { computed, nextTick, ref, watch } from 'vue'
 import type { DemoMessage } from './avatar-types'
 import { useDigitalHumanDemo } from './useDigitalHumanDemo'
 import VideoDigitalHumanStage from './VideoDigitalHumanStage.vue'
-import { VIDEO_POSTER_URL, VIDEO_STATUS_LABELS } from './video-avatar-config'
-
-const fallbackPosterUrl = VIDEO_POSTER_URL
+import { VIDEO_STATUS_LABELS } from './video-avatar-config'
 
 const {
   clearConversation,
-  collapse,
-  expand,
   handleSpeechComplete,
   hasInput,
   inputText,
   isBusy,
-  isExpanded,
   isRecording,
   latestAssistantText,
   messages,
@@ -220,54 +193,17 @@ watch(
 <style scoped>
 .assistant-demo {
   position: fixed;
-  top: clamp(12px, 2dvh, 20px);
-  right: clamp(12px, 2dvw, 20px);
+  inset: 0;
   z-index: 40;
-}
-
-.assistant-trigger {
-  display: inline-flex;
   align-items: center;
-  gap: 12px;
-  min-width: 216px;
-  padding: 10px 14px 10px 10px;
-  border: none;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 18px 42px rgba(70, 107, 165, 0.18);
-  cursor: pointer;
-}
-
-.assistant-trigger__avatar {
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  object-fit: cover;
-  object-position: center top;
-  box-shadow: 0 10px 24px rgba(112, 144, 199, 0.2);
-}
-
-.assistant-trigger__content {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  text-align: left;
-}
-
-.assistant-trigger__content strong {
-  font-size: 15px;
-  color: #20304d;
-}
-
-.assistant-trigger__content span {
-  font-size: 12px;
-  color: #7283a1;
+  justify-content: center;
+  padding: 12px;
 }
 
 .assistant-panel {
-  width: min(420px, calc(100vw - 24px));
-  height: min(780px, calc(100dvh - 24px));
+  width: min(520px, calc(100vw - 32px));
+  height: calc(100dvh - 24px);
   max-height: calc(100dvh - 24px);
   display: flex;
   flex-direction: column;
@@ -338,8 +274,7 @@ watch(
   gap: 10px;
 }
 
-.assistant-panel__text-button,
-.assistant-panel__icon-button {
+.assistant-panel__text-button {
   border: none;
   cursor: pointer;
 }
@@ -351,16 +286,6 @@ watch(
   background: rgba(96, 133, 239, 0.12);
   font-size: 13px;
   font-weight: 700;
-}
-
-.assistant-panel__icon-button {
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border-radius: 50%;
-  background: transparent;
-  font-size: 20px;
-  color: #5f6e88;
 }
 
 .assistant-panel__body {
@@ -565,38 +490,9 @@ watch(
   cursor: not-allowed;
 }
 
-@media (max-width: 1280px) {
-  .assistant-demo {
-    position: static;
-  }
-
-  .assistant-trigger {
-    margin-top: 16px;
-  }
-
-  .assistant-panel {
-    width: 100%;
-    height: auto;
-    max-height: none;
-    margin-top: 16px;
-    overflow: visible;
-  }
-
-  .assistant-panel__body {
-    grid-template-rows: auto auto auto auto;
-    overflow: visible;
-  }
-
-  .assistant-panel__chat-card,
-  .assistant-suggestions {
-    min-height: auto;
-    max-height: none;
-  }
-}
-
 @media (max-height: 820px) and (min-width: 641px) {
   .assistant-panel {
-    width: min(390px, calc(100vw - 24px));
+    width: min(500px, calc(100vw - 24px));
     padding: 12px;
     border-radius: 24px;
   }
@@ -670,18 +566,9 @@ watch(
 }
 
 @media (max-width: 640px) {
-  .assistant-demo {
-    top: 12px;
-    right: 12px;
-    left: 12px;
-  }
-
-  .assistant-trigger {
-    width: 100%;
-  }
-
   .assistant-panel {
     width: 100%;
+    height: calc(100dvh - 24px);
     padding: 14px;
   }
 
