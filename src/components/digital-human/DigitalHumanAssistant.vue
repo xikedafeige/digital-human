@@ -18,29 +18,31 @@
 			</header>
 
 			<div class="assistant-panel__body">
-				<VideoDigitalHumanStage :state="status" :speech-result="speechResult" :autoplay-token="speechToken"
-					@speech-complete="handleSpeechComplete" />
+				<div class="assistant-panel__stage-shell">
+					<VideoDigitalHumanStage :state="status" :speech-result="speechResult" :autoplay-token="speechToken"
+						@speech-complete="handleSpeechComplete" />
 
-				<section class="assistant-panel__chat-card">
-					<header class="assistant-panel__chat-header">
-						<div class="assistant-panel__llm-chip">
-							<span class="assistant-panel__llm-dot"></span>
-							<span>LLM 已接入</span>
-						</div>
-						<p class="assistant-panel__runtime-tip">{{ statusHint }}</p>
-					</header>
+					<section class="assistant-panel__chat-card">
+						<header class="assistant-panel__chat-header">
+							<div class="assistant-panel__llm-chip">
+								<span class="assistant-panel__llm-dot"></span>
+								<span>LLM 已接入</span>
+							</div>
+							<p class="assistant-panel__runtime-tip">{{ statusHint }}</p>
+						</header>
 
-					<section ref="messagesRef" class="assistant-messages">
-						<article v-for="message in messages" :key="message.id" class="assistant-message"
-							:class="[`is-${message.role}`, { 'is-pending': message.pending }]">
-							<header class="assistant-message__meta">
-								<strong>{{ roleLabelMap[message.role] }}</strong>
-								<time>{{ formatTime(message.timestamp) }}</time>
-							</header>
-							<p>{{ message.content }}</p>
-						</article>
+						<section ref="messagesRef" class="assistant-messages">
+							<article v-for="message in messages" :key="message.id" class="assistant-message"
+								:class="[`is-${message.role}`, { 'is-pending': message.pending }]">
+								<header class="assistant-message__meta">
+									<strong>{{ roleLabelMap[message.role] }}</strong>
+									<time>{{ formatTime(message.timestamp) }}</time>
+								</header>
+								<p>{{ message.content }}</p>
+							</article>
+						</section>
 					</section>
-				</section>
+				</div>
 
 				<section class="assistant-suggestions">
 					<button v-for="item in suggestions" :key="item" type="button" class="assistant-suggestions__item"
@@ -54,20 +56,28 @@
 						<textarea v-model="inputText" class="assistant-input__field" rows="3" placeholder="输入问题..."
 							:disabled="isRecording" @keydown="handleInputKeydown"></textarea>
 
-						<span v-if="isBusy" class="assistant-input__busy-tip">发送新问题会中断当前播报</span>
-					</div>
-
-					<div class="assistant-input__actions">
-						<button type="button" class="assistant-input__voice" :class="{ 'is-recording': isRecording }"
+						<button type="button" class="assistant-input__voice-icon" :class="{ 'is-recording': isRecording }"
+							:aria-label="isRecording ? '松开结束' : '按住说话'" :title="isRecording ? '松开结束' : '按住说话'"
 							@mousedown.prevent="startVoiceInput" @mouseup.prevent="stopVoiceInput" @mouseleave="handleVoiceLeave"
-							@touchstart.prevent="startVoiceInput" @touchend.prevent="stopVoiceInput">
-							{{ isRecording ? '松开结束' : '按住说话' }}
+							@touchstart.prevent="startVoiceInput" @touchend.prevent="stopVoiceInput"
+							@touchcancel.prevent="stopVoiceInput">
+							<svg v-if="!isRecording" viewBox="0 0 24 24" aria-hidden="true">
+								<path
+									d="M12 14.5c1.7 0 3-1.3 3-3V6.8c0-1.7-1.3-3-3-3s-3 1.3-3 3v4.7c0 1.7 1.3 3 3 3Z" />
+								<path d="M6.5 11.2c0 3 2.4 5.5 5.5 5.5s5.5-2.5 5.5-5.5" />
+								<path d="M12 16.7v3.2" />
+								<path d="M9 19.9h6" />
+							</svg>
+							<svg v-else viewBox="0 0 24 24" aria-hidden="true">
+								<path d="M9 8.5h6v7H9z" />
+								<path d="M5.8 10.2v3.6" />
+								<path d="M18.2 10.2v3.6" />
+								<path d="M3.5 11.1v1.8" />
+								<path d="M20.5 11.1v1.8" />
+							</svg>
 						</button>
 
-						<button type="button" class="assistant-input__send" :disabled="!hasInput || isRecording"
-							@click="submitInput">
-							发送
-						</button>
+						<span v-if="isBusy" class="assistant-input__busy-tip">发送新问题会中断当前播报</span>
 					</div>
 				</footer>
 			</div>
@@ -85,7 +95,6 @@ import { VIDEO_STATUS_LABELS } from './video-avatar-config'
 const {
 	clearConversation,
 	handleSpeechComplete,
-	hasInput,
 	inputText,
 	isBusy,
 	isRecording,
@@ -133,6 +142,10 @@ const handleVoiceLeave = () => {
 }
 
 const handleInputKeydown = (event: KeyboardEvent) => {
+	if (event.isComposing) {
+		return
+	}
+
 	if (event.key === 'Enter' && !event.shiftKey) {
 		event.preventDefault()
 		submitInput()
@@ -261,10 +274,24 @@ watch(
 .assistant-panel__body {
 	flex: 1;
 	display: grid;
-	grid-template-rows: minmax(220px, 0.82fr) minmax(136px, 1fr) auto auto;
-	gap: 14px;
+	grid-template-rows: auto auto auto;
+	gap: 12px;
 	min-height: 0;
 	overflow: hidden;
+}
+
+.assistant-panel__stage-shell {
+	display: grid;
+	grid-template-rows: minmax(210px, 0.58fr) minmax(136px, 0.42fr);
+	height: clamp(360px, calc(100dvh - 260px), 560px);
+	min-height: 0;
+	overflow: hidden;
+	border: 1px solid rgba(226, 233, 248, 0.82);
+	border-radius: 26px;
+	background: linear-gradient(180deg, #fafaf8 0%, #fafaf8 51%, #ffffff 51%, #f8fbff 100%);
+	box-shadow:
+		0 16px 34px rgba(88, 116, 156, 0.08),
+		inset 0 1px 0 rgba(255, 255, 255, 0.82);
 }
 
 .assistant-panel__chat-card {
@@ -273,10 +300,10 @@ watch(
 	gap: 8px;
 	padding: 12px 12px 10px;
 	padding-top: 30px;
-	border-radius: 24px;
-	border: 1px solid rgba(226, 233, 248, 0.95);
-	background: linear-gradient(180deg, #ffffff, #f8fbff);
-	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84);
+	border-top: 1px solid rgba(220, 229, 246, 0.72);
+	border-radius: 0;
+	background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
 	min-height: 0;
 	overflow: hidden;
 }
@@ -399,8 +426,6 @@ watch(
 }
 
 .assistant-input {
-	display: grid;
-	gap: 10px;
 	padding: 12px;
 	border-radius: 22px;
 	border: 1px solid rgba(221, 230, 247, 0.95);
@@ -409,6 +434,7 @@ watch(
 }
 
 .assistant-input__field-wrap {
+	position: relative;
 	display: grid;
 	gap: 8px;
 }
@@ -416,6 +442,7 @@ watch(
 .assistant-input__field {
 	width: 100%;
 	min-height: 78px;
+	padding: 2px 54px 30px 0;
 	border: none;
 	resize: none;
 	outline: none;
@@ -424,49 +451,62 @@ watch(
 	font-size: 14px;
 }
 
+.assistant-input__voice-icon {
+	position: absolute;
+	right: 0;
+	bottom: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 38px;
+	height: 38px;
+	border: none;
+	border-radius: 50%;
+	background: linear-gradient(180deg, #eef4ff, #dfe9ff);
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+	color: #4f76fb;
+	cursor: pointer;
+	touch-action: none;
+}
+
+.assistant-input__voice-icon svg {
+	width: 20px;
+	height: 20px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.assistant-input__voice-icon.is-recording {
+	background: linear-gradient(180deg, #ffe4cc, #ffd2aa);
+	box-shadow:
+		0 0 0 6px rgba(255, 156, 75, 0.14),
+		inset 0 1px 0 rgba(255, 255, 255, 0.72);
+	color: #ce6f20;
+	animation: voiceIconPulse 1.15s ease-in-out infinite;
+}
+
+.assistant-input__voice-icon.is-recording svg {
+	fill: currentColor;
+}
+
 .assistant-input__busy-tip {
+	padding-right: 48px;
 	color: #ef7e2f;
 	font-size: 12px;
 }
 
-.assistant-input__actions {
-	display: flex;
-	justify-content: space-between;
-	gap: 10px;
-}
+@keyframes voiceIconPulse {
+	0%,
+	100% {
+		transform: scale(1);
+	}
 
-.assistant-input__voice,
-.assistant-input__send {
-	border: none;
-	border-radius: 999px;
-	cursor: pointer;
-}
-
-.assistant-input__voice {
-	flex: 1;
-	min-height: 42px;
-	background: rgba(95, 131, 238, 0.1);
-	color: #4166d5;
-	font-weight: 700;
-}
-
-.assistant-input__voice.is-recording {
-	background: rgba(255, 156, 75, 0.16);
-	color: #ce6f20;
-}
-
-.assistant-input__send {
-	min-width: 102px;
-	min-height: 42px;
-	background: linear-gradient(180deg, #6f91ff, #4f76fb);
-	color: #ffffff;
-	font-weight: 700;
-}
-
-.assistant-input__voice:disabled,
-.assistant-input__send:disabled {
-	opacity: 0.5;
-	cursor: not-allowed;
+	50% {
+		transform: scale(1.06);
+	}
 }
 
 @media (max-height: 820px) and (min-width: 641px) {
@@ -481,15 +521,19 @@ watch(
 	}
 
 	.assistant-panel__body {
-		grid-template-rows: minmax(210px, 0.72fr) minmax(128px, 1fr) auto auto;
+		grid-template-rows: auto auto auto;
 		gap: 10px;
+	}
+
+	.assistant-panel__stage-shell {
+		grid-template-rows: minmax(200px, 0.6fr) minmax(118px, 0.4fr);
+		height: clamp(330px, calc(100dvh - 230px), 440px);
+		border-radius: 20px;
 	}
 
 	.assistant-panel__chat-card {
 		gap: 6px;
 		padding: 8px 10px;
-		padding-top: 30px;
-		border-radius: 18px;
 	}
 
 	.assistant-panel__chat-header {
@@ -530,19 +574,25 @@ watch(
 	}
 
 	.assistant-input {
-		gap: 8px;
 		padding: 10px;
 		border-radius: 18px;
 	}
 
 	.assistant-input__field {
 		min-height: 56px;
+		padding-right: 48px;
+		padding-bottom: 28px;
 		font-size: 13px;
 	}
 
-	.assistant-input__voice,
-	.assistant-input__send {
-		min-height: 36px;
+	.assistant-input__voice-icon {
+		width: 34px;
+		height: 34px;
+	}
+
+	.assistant-input__voice-icon svg {
+		width: 18px;
+		height: 18px;
 	}
 }
 

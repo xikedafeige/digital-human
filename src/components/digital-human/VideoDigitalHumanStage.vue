@@ -286,13 +286,13 @@ onBeforeUnmount(() => {
 <style scoped>
 .video-stage {
   position: relative;
-  min-height: clamp(210px, 34dvh, 330px);
+  min-height: 0;
   height: 100%;
   overflow: hidden;
-  border-radius: 28px;
+  border-radius: 24px 24px 0 0;
   background: #fafaf8;
-  border: 1px solid rgba(232, 232, 228, 0.95);
-  box-shadow: 0 16px 36px rgba(94, 104, 120, 0.1);
+  border: 0;
+  box-shadow: none;
 }
 
 .video-stage__media {
@@ -368,7 +368,7 @@ onBeforeUnmount(() => {
 
 @media (max-height: 820px) and (min-width: 641px) {
   .video-stage {
-    border-radius: 22px;
+    border-radius: 18px 18px 0 0;
   }
 
   .video-stage__badge {
