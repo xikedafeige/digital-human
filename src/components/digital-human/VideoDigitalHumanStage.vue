@@ -317,7 +317,7 @@ onBeforeUnmount(() => {
   object-position: center bottom;
   opacity: 0;
   transform: none;
-  transition: opacity 180ms ease;
+  /* transition: opacity 180ms ease; */
   filter: none;
   will-change: opacity;
 }

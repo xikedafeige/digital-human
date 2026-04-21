@@ -7,7 +7,7 @@ export const VIDEO_STAGE_SOURCES: Record<AvatarState, string> = {
   idle: '/videos/等待1.mp4',
   listening: '/videos/思考1.mp4',
   thinking: '/videos/思考1.mp4',
-  speaking: '/videos/说话1.mp4',
+  speaking: '/videos/说话2.mp4',
 }
 
 export const VIDEO_STATUS_LABELS: Record<AvatarState, string> = {
