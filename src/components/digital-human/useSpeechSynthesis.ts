@@ -1,13 +1,8 @@
 import { ref } from 'vue'
 import type { SpeechSynthesisResult } from './avatar-types'
 import { RESPONSE_TIMING } from './demo-config'
+import { buildTtsEndpointUrl, DIGITAL_HUMAN_RUNTIME_CONFIG } from './runtime-config'
 
-const TTS_SERVER_URL = 'http://192.168.113.44:8001'
-const TTS_ENDPOINT = `${TTS_SERVER_URL}/v1/audio/speech`
-const TTS_MODEL = 'matcha-tts'
-const TTS_VOICE = 'xiaoxiao'
-const TTS_RESPONSE_FORMAT = 'mp3'
-const TTS_SPEED = '1.0'
 const AUDIO_METADATA_TIMEOUT_MS = 3500
 
 const createAbortError = () => new DOMException('TTS synthesis aborted', 'AbortError')
@@ -107,16 +102,16 @@ export function useSpeechSynthesis() {
 
     const formData = new FormData()
     formData.append('input', normalizedText)
-    formData.append('model', TTS_MODEL)
-    formData.append('voice', TTS_VOICE)
-    formData.append('response_format', TTS_RESPONSE_FORMAT)
-    formData.append('speed', TTS_SPEED)
+    formData.append('model', DIGITAL_HUMAN_RUNTIME_CONFIG.ttsModel)
+    formData.append('voice', DIGITAL_HUMAN_RUNTIME_CONFIG.ttsVoice)
+    formData.append('response_format', DIGITAL_HUMAN_RUNTIME_CONFIG.ttsResponseFormat)
+    formData.append('speed', DIGITAL_HUMAN_RUNTIME_CONFIG.ttsSpeed)
 
     let audioUrl = ''
 
     try {
       // Request real TTS audio using the same contract as the standalone test page.
-      const response = await fetch(TTS_ENDPOINT, {
+      const response = await fetch(buildTtsEndpointUrl(), {
         method: 'POST',
         body: formData,
         signal: options.signal,

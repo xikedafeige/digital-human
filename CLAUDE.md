@@ -10,13 +10,15 @@
 *（注：目前的 `package.json` scripts 中没有明确配置代码格式化 (Linting) 和测试 (Testing) 命令。）*
 
 ## 架构与目录结构
-这是一个基于 Vite 和 Pinia 构建的 Vue 3 + TypeScript 项目。它主要作为“数字人”助手的演示（Demo）或前端交互界面。
+这是一个基于 Vite 的 Vue 3 + TypeScript 项目，当前只保留“视频数字人”这一条实现路线。
 
-- **`src/components/DigitalHuman/` 和 `src/components/digital-human/`**：数字人助手的核心逻辑和 UI 组件。
-  - **`DigitalHuman.vue`**：助手 UI 的主入口组件。它处理展开/折叠状态，为不同的虚拟形象状态（待命 idle、聆听 listening、思考 thinking、说话 speaking）渲染视频，以及处理聊天输入界面。
-  - **`demo-config.ts`**：包含模拟的大模型（LLM）响应、响应时序和建议问答。用于模拟真实的后端交互。
-  - **`useDigitalHumanDemo.ts`**：主要的 Composable（组合式函数），负责管理交互状态，处理打字机动画、模拟语音合成时长，以及在思考、说话、待命等状态间的切换。
-  - **`avatar-types.ts`**：核心的 TypeScript 类型定义，包含形象状态（`AvatarState`）、消息结构和 Live2D 相关的配置类型。
-- **状态管理**：使用 Pinia（在 `main.ts` 中配置，可能存在于 `src/stores/digitalHuman`）。`DigitalHuman.vue` 组件直接与 Pinia Store 交互来管理其 UI 和对话状态。
-- **静态资源/视频**：项目依赖 `.mp4` 视频文件来呈现数字人的不同状态（例如 `idle.mp4`, `speaking.mp4`）。这些文件通常存放在 `public/videos/` 目录下，或者在 `video-avatar-config.ts` 中进行路径映射。
-- **Live2D 支持**：代码库中包含了 Live2D 集成的基础框架（引入了 `pixi-live2d-display`、`pixi.js` 依赖，并包含 `Live2DStage.vue` 组件），表明数字人可以在视频驱动和 Live2D 驱动之间进行切换。
+- **`src/components/digital-human/`**：数字人助手的核心逻辑和 UI 组件。
+  - **`DigitalHumanAssistant.vue`**：当前页面的主入口，负责视频舞台、聊天记录、建议问题和输入区交互。
+  - **`VideoDigitalHumanStage.vue`**：视频数字人舞台，负责不同状态视频切换和语音播放收尾。
+  - **`demo-config.ts`**：包含模拟回复文本、建议问答和回复时序配置。
+  - **`useDigitalHumanDemo.ts`**：主要的 Composable，负责 thinking / speaking / idle 状态切换、打字机动画、ASR/TTS 联动。
+  - **`useSpeechRecognition.ts`**：WebSocket ASR 封装。
+  - **`useSpeechSynthesis.ts`**：TTS 请求与音频 URL 处理封装。
+  - **`runtime-config.ts`**：统一读取 `.env` 中的 ASR、TTS、视频素材和时序参数。
+- **环境配置**：运行参数通过 `.env` / `.env.example` 管理，使用 `VITE_*` 变量为 ASR、TTS、视频素材和回复时序提供配置入口。
+- **静态资源/视频**：项目依赖 `public/videos/` 下的状态视频素材来呈现数字人待命、聆听、思考和回答状态。

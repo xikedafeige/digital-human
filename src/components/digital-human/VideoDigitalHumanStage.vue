@@ -31,7 +31,6 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import type { AvatarState, SpeechSynthesisResult } from './avatar-types'
 import {
-  VIDEO_POSTER_URL,
   VIDEO_STAGE_SOURCES,
   VIDEO_STATUS_LABELS,
 } from './video-avatar-config'
@@ -40,14 +39,12 @@ interface Props {
   state: AvatarState
   speechResult?: SpeechSynthesisResult | null
   autoplayToken?: number
-  posterUrl?: string
   videoSources?: Partial<Record<AvatarState, string>>
 }
 
 const props = withDefaults(defineProps<Props>(), {
   speechResult: null,
   autoplayToken: 0,
-  posterUrl: VIDEO_POSTER_URL,
   videoSources: () => VIDEO_STAGE_SOURCES,
 })
 

@@ -1,6 +1,5 @@
 import { onBeforeUnmount, ref } from 'vue'
-
-const SPEECH_RECOGNITION_WS_URL = 'ws://192.168.113.44:8001/ws/recognize'
+import { DIGITAL_HUMAN_RUNTIME_CONFIG } from './runtime-config'
 const STOP_RESULT_TIMEOUT_MS = 3000
 
 interface RecognitionSegment {
@@ -174,7 +173,7 @@ export function useSpeechRecognition(options: SpeechRecognitionOptions = {}) {
     isRecognizing.value = true
 
     try {
-      ws = new WebSocket(SPEECH_RECOGNITION_WS_URL)
+      ws = new WebSocket(DIGITAL_HUMAN_RUNTIME_CONFIG.asrWsUrl)
       ws.onopen = () => {
         const sampleRate = audioContext?.sampleRate ?? 16000
         // Tell the service the actual browser sample rate for accurate server-side resampling.

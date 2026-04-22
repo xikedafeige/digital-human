@@ -1,6 +1,7 @@
-﻿import type { AvatarState, DemoMessage, SpeechSynthesisResult } from './avatar-types'
+import type { DemoMessage, SpeechSynthesisResult } from './avatar-types'
+import { DIGITAL_HUMAN_RUNTIME_CONFIG } from './runtime-config'
 
-export type DigitalHumanStatus = AvatarState
+export type DigitalHumanStatus = 'idle' | 'listening' | 'thinking' | 'speaking'
 export type { DemoMessage }
 
 export const DIGITAL_HUMAN_SUGGESTIONS = [
@@ -14,11 +15,7 @@ export const SYSTEM_WELCOME =
   '你好，我是数字人小助，当前版本会模拟 LLM 实时问答、录音交互、流式回复和语音播报。'
 
 export const RESPONSE_TIMING = {
-  thinkingMs: 960,
-  typingIntervalMs: 24,
-  speakingTailMs: 420,
-  minimumSpeakingMs: 1800,
-  msPerCharacter: 105,
+  ...DIGITAL_HUMAN_RUNTIME_CONFIG.responseTiming,
 }
 
 const REPLY_LIBRARY = [
@@ -46,7 +43,10 @@ const REPLY_LIBRARY = [
 
 export const buildMockSpeechResult = (text: string): SpeechSynthesisResult => {
   const normalizedText = text.trim()
-  const baseDuration = Math.max(RESPONSE_TIMING.minimumSpeakingMs, normalizedText.length * RESPONSE_TIMING.msPerCharacter)
+  const baseDuration = Math.max(
+    RESPONSE_TIMING.minimumSpeakingMs,
+    normalizedText.length * RESPONSE_TIMING.msPerCharacter
+  )
 
   return {
     text: normalizedText,

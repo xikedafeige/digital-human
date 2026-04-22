@@ -1,12 +1,8 @@
 import type { AvatarState } from './avatar-types'
-
-export const VIDEO_POSTER_URL = '/digital-human/avatar.jpg'
+import { DIGITAL_HUMAN_RUNTIME_CONFIG } from './runtime-config'
 
 export const VIDEO_STAGE_SOURCES: Record<AvatarState, string> = {
-  idle: '/videos/等待1.mp4',
-  listening: '/videos/思考1.mp4',
-  thinking: '/videos/思考1.mp4',
-  speaking: '/videos/说话2.mp4',
+  ...DIGITAL_HUMAN_RUNTIME_CONFIG.videoSources,
 }
 
 export const VIDEO_STATUS_LABELS: Record<AvatarState, string> = {
