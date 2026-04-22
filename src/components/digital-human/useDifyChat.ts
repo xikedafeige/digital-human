@@ -3,6 +3,7 @@ import {
   buildDifyStopMessageUrl,
   DIGITAL_HUMAN_RUNTIME_CONFIG,
 } from './runtime-config'
+import { parseReplyContent, type ParsedReplyContent } from './message-content'
 
 const DIFY_USER_STORAGE_KEY = 'digital-human:dify-user'
 
@@ -36,7 +37,7 @@ interface DifyBlockingPayload {
 }
 
 interface DifyChatHandlers {
-  onText?: (text: string, chunk: string) => void
+  onText?: (content: ParsedReplyContent, chunk: string) => void
   onConversationId?: (conversationId: string) => void
   onTaskId?: (taskId: string) => void
 }
@@ -46,8 +47,7 @@ interface DifyChatOptions extends DifyChatHandlers {
   signal?: AbortSignal
 }
 
-export interface DifyChatResult {
-  text: string
+export interface DifyChatResult extends ParsedReplyContent {
   conversationId: string
   taskId: string
   messageId: string
@@ -149,6 +149,12 @@ const mergeAccumulatedText = (currentText: string, nextChunk: string) => {
   return currentText + nextChunk
 }
 
+const logParsedContent = (content: ParsedReplyContent) => {
+  console.info('[Dify raw text]', content.rawText)
+  console.info('[Dify body text]', content.bodyMarkdown)
+  console.info('[Dify final speech text]', content.speechText)
+}
+
 export function useDifyChat() {
   const errorMessage = ref('')
   const isStreaming = ref(false)
@@ -232,8 +238,9 @@ export function useDifyChat() {
         const payload = (await response.json()) as DifyBlockingPayload
         console.info('[Dify blocking payload]', payload)
 
-        const finalText = pickString(payload.answer).trim()
-        if (!finalText) {
+        const rawText = pickString(payload.answer).trim()
+        const parsedContent = parseReplyContent(rawText)
+        if (!parsedContent.bodyMarkdown && !parsedContent.speechText) {
           throw new Error('Dify blocking response returned an empty answer')
         }
 
@@ -244,16 +251,17 @@ export function useDifyChat() {
 
         options.onTaskId?.(latestTaskId)
         options.onConversationId?.(latestConversationId)
-        options.onText?.(finalText, finalText)
+        options.onText?.(parsedContent, rawText)
+        logParsedContent(parsedContent)
 
         console.info('[Dify final text]', {
           task_id: latestTaskId,
           conversation_id: latestConversationId,
-          finalText,
+          finalText: parsedContent.bodyMarkdown,
         })
 
         return {
-          text: finalText,
+          ...parsedContent,
           conversationId: latestConversationId,
           taskId: latestTaskId,
           messageId: latestMessageId,
@@ -307,8 +315,9 @@ export function useDifyChat() {
           accumulatedText = mergeAccumulatedText(accumulatedText, textChunk)
         }
 
-        console.log('accumulatedText', accumulatedText)
-        options.onText?.(accumulatedText, textChunk)
+        const parsedContent = parseReplyContent(accumulatedText)
+        logParsedContent(parsedContent)
+        options.onText?.(parsedContent, textChunk)
       }
 
       while (true) {
@@ -358,19 +367,20 @@ export function useDifyChat() {
         applyPayload(payload)
       })
 
-      const finalText = accumulatedText.trim()
+      const parsedContent = parseReplyContent(accumulatedText)
+      logParsedContent(parsedContent)
       console.info('[Dify final text]', {
         task_id: latestTaskId,
         conversation_id: latestConversationId,
-        finalText,
+        finalText: parsedContent.bodyMarkdown,
       })
 
-      if (!finalText) {
+      if (!parsedContent.bodyMarkdown && !parsedContent.speechText) {
         throw new Error('Dify chat returned an empty answer')
       }
 
       return {
-        text: finalText,
+        ...parsedContent,
         conversationId: latestConversationId,
         taskId: latestTaskId,
         messageId: latestMessageId,

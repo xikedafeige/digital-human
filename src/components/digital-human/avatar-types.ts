@@ -13,6 +13,9 @@ export interface DemoMessage {
   source?: MessageSource
   engine?: 'dify' | 'fallback'
   conversationId?: string
+  thinkContent?: string
+  thinkCollapsed?: boolean
+  renderMode?: 'plain' | 'markdown'
 }
 
 export interface SpeechViseme {

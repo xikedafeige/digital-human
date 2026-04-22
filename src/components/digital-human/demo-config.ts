@@ -12,7 +12,7 @@ export const DIGITAL_HUMAN_SUGGESTIONS = [
 ]
 
 export const SYSTEM_WELCOME =
-  '你好，我是数字人小助，当前版本会模拟 LLM 实时问答、录音交互、流式回复和语音播报。'
+  '你好，我是数字人小助，当前版本支持文本问答、语音输入、流式回复和语音播报。'
 
 export const RESPONSE_TIMING = {
   ...DIGITAL_HUMAN_RUNTIME_CONFIG.responseTiming,
@@ -32,7 +32,7 @@ const REPLY_LIBRARY = [
   {
     keywords: ['事后评价', '评价'],
     reply:
-      '事后评价通常包含资料归档、指标复盘、结果分析和改进建议四部分。现在这版会先模拟数字人思考、播报和流式输出，帮助确认前端交互形态。',
+      '事后评价通常包含资料归档、指标复盘、结果分析和改进建议四部分。当前版本会先模拟数字人回复链路，方便你确认前端交互体验。',
   },
   {
     keywords: ['系统管理', '入口', '模块'],
@@ -45,7 +45,7 @@ export const buildMockSpeechResult = (text: string): SpeechSynthesisResult => {
   const normalizedText = text.trim()
   const baseDuration = Math.max(
     RESPONSE_TIMING.minimumSpeakingMs,
-    normalizedText.length * RESPONSE_TIMING.msPerCharacter
+    normalizedText.length * RESPONSE_TIMING.msPerCharacter,
   )
 
   return {
@@ -61,7 +61,7 @@ export function buildDemoReply(question: string) {
   const normalizedQuestion = question.trim()
 
   const matchedReply = REPLY_LIBRARY.find((item) =>
-    item.keywords.some((keyword) => normalizedQuestion.includes(keyword))
+    item.keywords.some((keyword) => normalizedQuestion.includes(keyword)),
   )
 
   return (

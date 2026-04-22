@@ -46,7 +46,40 @@
 									<strong>{{ roleLabelMap[message.role] }}</strong>
 									<time>{{ formatTime(message.timestamp) }}</time>
 								</header>
-								<p>{{ message.content }}</p>
+
+								<div
+									v-if="message.thinkContent"
+									class="assistant-message__think"
+									:class="{ 'is-collapsed': message.thinkCollapsed }"
+								>
+									<button
+										type="button"
+										class="assistant-message__think-toggle"
+										@click="toggleThinkVisibility(message.id)"
+									>
+										<span>思考过程</span>
+										<span
+											class="assistant-message__think-arrow"
+											:class="{ 'is-collapsed': message.thinkCollapsed }"
+											aria-hidden="true"
+										></span>
+									</button>
+
+									<div
+										v-show="!message.thinkCollapsed"
+										class="assistant-message__markdown assistant-message__think-markdown"
+										v-html="renderMessageHtml(message.thinkContent)"
+									></div>
+								</div>
+
+								<div
+									v-if="message.renderMode === 'markdown' && message.content"
+									class="assistant-message__markdown"
+									v-html="renderMessageHtml(message.content)"
+								></div>
+								<p v-else-if="message.content" class="assistant-message__plain">
+									{{ message.content }}
+								</p>
 							</article>
 						</section>
 					</section>
@@ -79,8 +112,8 @@
 							type="button"
 							class="assistant-input__voice-icon"
 							:class="{ 'is-recording': isRecording }"
-							:aria-label="isRecording ? '停止录音' : '开始录音'"
-							:title="isRecording ? '停止录音' : '开始录音'"
+							:aria-label="isRecording ? '停止录音' : '语音输入'"
+							:data-tooltip="isRecording ? '停止录音' : '语音输入'"
 							@click="toggleVoiceInput"
 						>
 							<svg v-if="!isRecording" viewBox="0 0 24 24" aria-hidden="true">
@@ -111,6 +144,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import type { DemoMessage } from './avatar-types'
+import { markdownToPlainText, renderMarkdownToHtml } from './message-content'
 import { useDigitalHumanDemo } from './useDigitalHumanDemo'
 import VideoDigitalHumanStage from './VideoDigitalHumanStage.vue'
 import { VIDEO_STATUS_LABELS } from './video-avatar-config'
@@ -131,6 +165,7 @@ const {
 	stopVoiceInput,
 	submitInput,
 	suggestions,
+	toggleThinkVisibility,
 } = useDigitalHumanDemo()
 
 const messagesRef = ref<HTMLElement | null>(null)
@@ -149,7 +184,7 @@ const statusHint = computed(() => {
 		return '思考中...'
 	}
 
-	return latestAssistantText.value
+	return markdownToPlainText(latestAssistantText.value) || latestAssistantText.value
 })
 
 const roleLabelMap: Record<DemoMessage['role'], string> = {
@@ -157,6 +192,8 @@ const roleLabelMap: Record<DemoMessage['role'], string> = {
 	assistant: '数字人',
 	system: '系统',
 }
+
+const renderMessageHtml = (content: string) => renderMarkdownToHtml(content)
 
 const toggleVoiceInput = () => {
 	if (isRecording.value) {
@@ -195,7 +232,7 @@ watch(
 			messagesRef.value.scrollTop = messagesRef.value.scrollHeight
 		})
 	},
-	{ deep: true }
+	{ deep: true },
 )
 </script>
 
@@ -204,8 +241,8 @@ watch(
 	position: fixed;
 	inset: 0;
 	z-index: 40;
-	align-items: center;
 	display: flex;
+	align-items: center;
 	justify-content: center;
 	padding: 12px;
 }
@@ -324,7 +361,6 @@ watch(
 	padding: 12px 12px 10px;
 	padding-top: 30px;
 	border-top: 1px solid rgba(220, 229, 246, 0.72);
-	border-radius: 0;
 	background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
 	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
 	min-height: 0;
@@ -395,7 +431,6 @@ watch(
 
 .assistant-messages {
 	min-height: 0;
-	max-height: none;
 	display: flex;
 	flex-direction: column;
 	gap: 10px;
@@ -441,11 +476,106 @@ watch(
 	opacity: 0.7;
 }
 
-.assistant-message p {
+.assistant-message__plain {
 	margin: 0;
 	font-size: 14px;
 	line-height: 1.6;
 	white-space: pre-wrap;
+}
+
+.assistant-message__markdown {
+	color: inherit;
+	font-size: 14px;
+	line-height: 1.6;
+	word-break: break-word;
+}
+
+.assistant-message__markdown :deep(*:first-child) {
+	margin-top: 0;
+}
+
+.assistant-message__markdown :deep(*:last-child) {
+	margin-bottom: 0;
+}
+
+.assistant-message__markdown :deep(p) {
+	margin: 0 0 8px;
+}
+
+.assistant-message__markdown :deep(ul),
+.assistant-message__markdown :deep(ol) {
+	margin: 0 0 8px;
+	padding-left: 18px;
+}
+
+.assistant-message__markdown :deep(li + li) {
+	margin-top: 4px;
+}
+
+.assistant-message__markdown :deep(code) {
+	padding: 1px 4px;
+	border-radius: 6px;
+	background: rgba(24, 39, 75, 0.08);
+	font-size: 0.92em;
+}
+
+.assistant-message__markdown :deep(pre) {
+	margin: 0 0 8px;
+	padding: 10px 12px;
+	border-radius: 12px;
+	background: rgba(24, 39, 75, 0.08);
+	overflow-x: auto;
+}
+
+.assistant-message__markdown :deep(pre code) {
+	padding: 0;
+	background: transparent;
+}
+
+.assistant-message__think {
+	margin-bottom: 10px;
+	border-radius: 14px;
+	border: 1px solid rgba(197, 210, 235, 0.85);
+	background: rgba(255, 255, 255, 0.62);
+	overflow: hidden;
+}
+
+.assistant-message__think.is-collapsed {
+	margin-bottom: 12px;
+}
+
+.assistant-message__think-toggle {
+	width: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	padding: 10px 12px;
+	border: none;
+	background: transparent;
+	color: #536684;
+	font-size: 12px;
+	font-weight: 700;
+	cursor: pointer;
+}
+
+.assistant-message__think-arrow {
+	width: 8px;
+	height: 8px;
+	border-right: 2px solid currentColor;
+	border-bottom: 2px solid currentColor;
+	transform: rotate(45deg);
+	transition: transform 0.2s ease;
+}
+
+.assistant-message__think-arrow.is-collapsed {
+	transform: rotate(-45deg);
+}
+
+.assistant-message__think-markdown {
+	padding: 0 12px 12px;
+	color: #5b6c88;
+	font-size: 13px;
 }
 
 .assistant-input {
@@ -490,6 +620,39 @@ watch(
 	color: #4f76fb;
 	cursor: pointer;
 	touch-action: none;
+	transition:
+		background 0.2s ease,
+		box-shadow 0.2s ease,
+		color 0.2s ease,
+		transform 0.2s ease;
+}
+
+.assistant-input__voice-icon:hover:not(.is-recording) {
+	background: linear-gradient(180deg, #f2f7ff, #e8f0ff);
+	color: #3f67f4;
+}
+
+.assistant-input__voice-icon::after {
+	content: attr(data-tooltip);
+	position: absolute;
+	left: 50%;
+	bottom: calc(100% + 8px);
+	transform: translateX(-50%);
+	padding: 4px 8px;
+	border-radius: 8px;
+	background: rgba(35, 51, 82, 0.92);
+	color: #ffffff;
+	font-size: 11px;
+	line-height: 1;
+	white-space: nowrap;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.16s ease;
+}
+
+.assistant-input__voice-icon:hover::after,
+.assistant-input__voice-icon:focus-visible::after {
+	opacity: 1;
 }
 
 .assistant-input__voice-icon svg {
@@ -591,9 +754,18 @@ watch(
 		margin-bottom: 5px;
 	}
 
-	.assistant-message p {
+	.assistant-message__plain,
+	.assistant-message__markdown {
 		font-size: 13px;
 		line-height: 1.5;
+	}
+
+	.assistant-message__think-toggle {
+		padding: 8px 10px;
+	}
+
+	.assistant-message__think-markdown {
+		padding: 0 10px 10px;
 	}
 
 	.assistant-input {
