@@ -73,6 +73,7 @@ const pendingState = ref<AvatarState | null>(null)
 
 let playbackSessionId = 0
 let speechTimerId: number | null = null
+let activeAudio: HTMLAudioElement | null = null
 let activeUtterance: SpeechSynthesisUtterance | null = null
 
 const resolvedVideoSources = computed<Record<AvatarState, string>>(() => ({
@@ -88,6 +89,17 @@ const clearSpeechTimer = () => {
   }
 }
 
+const cleanupAudio = () => {
+  if (!activeAudio) {
+    return
+  }
+
+  activeAudio.onended = null
+  activeAudio.onerror = null
+  activeAudio.pause()
+  activeAudio = null
+}
+
 const cleanupUtterance = () => {
   if (!activeUtterance) {
     return
@@ -101,6 +113,7 @@ const cleanupUtterance = () => {
 const stopSpeechPlayback = () => {
   playbackSessionId += 1
   clearSpeechTimer()
+  cleanupAudio()
   cleanupUtterance()
 
   if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -123,7 +136,23 @@ const startSpeechPlayback = async (speech: SpeechSynthesisResult) => {
 
   speechTimerId = window.setTimeout(() => {
     finishSpeechPlayback(sessionId)
-  }, speech.durationMs + 900)
+  }, speech.durationMs + (speech.audioUrl ? 240 : 900))
+
+  if (speech.audioUrl) {
+    const audio = new Audio(speech.audioUrl)
+    activeAudio = audio
+    audio.preload = 'auto'
+    audio.onended = () => finishSpeechPlayback(sessionId)
+    audio.onerror = () => finishSpeechPlayback(sessionId)
+
+    try {
+      await audio.play()
+    } catch {
+      // If autoplay is blocked, the timer fallback still keeps the speaking state consistent.
+    }
+
+    return
+  }
 
   if (typeof window === 'undefined' || !('speechSynthesis' in window) || !speech.text.trim()) {
     return

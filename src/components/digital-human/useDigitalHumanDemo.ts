@@ -8,6 +8,7 @@ import {
 } from './demo-config'
 import type { AvatarState, DemoMessage, SpeechSynthesisResult } from './avatar-types'
 import { useSpeechRecognition } from './useSpeechRecognition'
+import { useSpeechSynthesis } from './useSpeechSynthesis'
 
 const createMessage = (
   role: DemoMessage['role'],
@@ -48,6 +49,7 @@ export function useDigitalHumanDemo() {
   let activeReplyFlowId = 0
   let typingCompleted = false
   let speechCompleted = false
+  let activeTtsController: AbortController | null = null
   const speechRecognition = useSpeechRecognition({
     onPartial: (text) => {
       inputText.value = text
@@ -57,6 +59,24 @@ export function useDigitalHumanDemo() {
     },
     onError: () => {},
   })
+  const speechSynthesisClient = useSpeechSynthesis()
+
+  const setSpeechResult = (nextSpeechResult: SpeechSynthesisResult | null) => {
+    if (speechResult.value && speechResult.value.audioUrl !== nextSpeechResult?.audioUrl) {
+      speechSynthesisClient.revoke(speechResult.value)
+    }
+
+    speechResult.value = nextSpeechResult
+  }
+
+  const cancelPendingSpeechSynthesis = () => {
+    if (!activeTtsController) {
+      return
+    }
+
+    activeTtsController.abort()
+    activeTtsController = null
+  }
 
   const clearFlowTimers = () => {
     flowTimers.forEach((timer) => window.clearTimeout(timer))
@@ -96,7 +116,8 @@ export function useDigitalHumanDemo() {
     inputText.value = ''
     isRecording.value = false
     status.value = 'idle'
-    speechResult.value = null
+    cancelPendingSpeechSynthesis()
+    setSpeechResult(null)
     clearActiveReplyState()
   }
 
@@ -107,7 +128,7 @@ export function useDigitalHumanDemo() {
       }
 
       status.value = 'idle'
-      speechResult.value = null
+      setSpeechResult(null)
       clearActiveReplyState()
     }, RESPONSE_TIMING.speakingTailMs)
   }
@@ -170,8 +191,9 @@ export function useDigitalHumanDemo() {
     clearFlowTimers()
     stopTypingMessage()
     clearActiveReplyState()
+    cancelPendingSpeechSynthesis()
     isRecording.value = false
-    speechResult.value = null
+    setSpeechResult(null)
     status.value = 'idle'
   }
 
@@ -188,13 +210,44 @@ export function useDigitalHumanDemo() {
     messages.value.push(assistantMessage)
     status.value = 'thinking'
 
-    queueTimeout(() => {
+    queueTimeout(async () => {
       if (flowId !== activeFlowId) {
         return
       }
 
-      const synthesized = buildMockSpeechResult(reply)
-      speechResult.value = synthesized
+      cancelPendingSpeechSynthesis()
+
+      const ttsController = new AbortController()
+      activeTtsController = ttsController
+
+      let synthesized: SpeechSynthesisResult
+
+      try {
+        synthesized = await speechSynthesisClient.synthesize(reply, {
+          signal: ttsController.signal,
+        })
+      } catch {
+        if (activeTtsController === ttsController) {
+          activeTtsController = null
+        }
+
+        if (ttsController.signal.aborted || flowId !== activeFlowId) {
+          return
+        }
+
+        synthesized = buildMockSpeechResult(reply)
+      }
+
+      if (activeTtsController === ttsController) {
+        activeTtsController = null
+      }
+
+      if (flowId !== activeFlowId) {
+        speechSynthesisClient.revoke(synthesized)
+        return
+      }
+
+      setSpeechResult(synthesized)
       speechToken.value += 1
       status.value = 'speaking'
       speechCompleted = false
@@ -267,7 +320,7 @@ export function useDigitalHumanDemo() {
 
   const handleSpeechComplete = () => {
     if (status.value !== 'speaking' || activeReplyFlowId !== activeFlowId) {
-      speechResult.value = null
+      setSpeechResult(null)
       return
     }
 
@@ -292,6 +345,8 @@ export function useDigitalHumanDemo() {
   onBeforeUnmount(() => {
     clearFlowTimers()
     stopTypingMessage()
+    cancelPendingSpeechSynthesis()
+    setSpeechResult(null)
   })
 
   return {
