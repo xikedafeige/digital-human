@@ -26,7 +26,7 @@
 						<header class="assistant-panel__chat-header">
 							<div class="assistant-panel__llm-chip">
 								<span class="assistant-panel__llm-dot"></span>
-								<span>LLM 已接入</span>
+								<span>Dify 已接入</span>
 							</div>
 							<p class="assistant-panel__runtime-tip">{{ statusHint }}</p>
 						</header>
@@ -75,7 +75,7 @@
 							</svg>
 						</button>
 
-						<span v-if="isBusy" class="assistant-input__busy-tip">发送新问题会中断当前播报</span>
+						<span v-if="isBusy" class="assistant-input__busy-tip">发送新问题会中断当前生成和播报</span>
 					</div>
 				</footer>
 			</div>
@@ -117,11 +117,11 @@ const statusHint = computed(() => {
 	}
 
 	if (status.value === 'speaking') {
-		return '回复正在流式输出，数字人同步播报中。'
+		return '正在播报回复，请稍候。'
 	}
 
 	if (status.value === 'thinking') {
-		return '正在模拟大模型思考，请稍候。'
+		return 'Dify 回复生成中，请稍候。'
 	}
 
 	return latestAssistantText.value

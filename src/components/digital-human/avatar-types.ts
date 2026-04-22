@@ -11,6 +11,8 @@ export interface DemoMessage {
   timestamp: number
   pending?: boolean
   source?: MessageSource
+  engine?: 'dify' | 'fallback'
+  conversationId?: string
 }
 
 export interface SpeechViseme {

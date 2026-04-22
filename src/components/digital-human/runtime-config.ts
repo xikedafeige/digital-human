@@ -24,6 +24,14 @@ export const DIGITAL_HUMAN_RUNTIME_CONFIG = {
   ttsVoice: readStringEnv(import.meta.env.VITE_TTS_VOICE, 'xiaoxiao'),
   ttsResponseFormat: readStringEnv(import.meta.env.VITE_TTS_RESPONSE_FORMAT, 'mp3'),
   ttsSpeed: readStringEnv(import.meta.env.VITE_TTS_SPEED, '1.0'),
+  difyChatMessagesUrl: readStringEnv(import.meta.env.VITE_DIFY_CHAT_MESSAGES_URL, 'http://172.16.3.177/v1/chat-messages'),
+  difyStopMessageUrlTemplate: readStringEnv(
+    import.meta.env.VITE_DIFY_STOP_MESSAGE_URL_TEMPLATE,
+    'http://172.16.3.177/v1/chat-messages/{task_id}/stop'
+  ),
+  difyApiKey: readStringEnv(import.meta.env.VITE_DIFY_API_KEY, ''),
+  difyUserPrefix: readStringEnv(import.meta.env.VITE_DIFY_USER_PREFIX, 'digital-human-demo'),
+  difyTimeoutMs: readNumberEnv(import.meta.env.VITE_DIFY_TIMEOUT_MS, 60000),
   videoSources: {
     idle: normalizePath(import.meta.env.VITE_VIDEO_IDLE_SRC, '/videos/等待1.mp4'),
     listening: normalizePath(import.meta.env.VITE_VIDEO_LISTENING_SRC, '/videos/思考1.mp4'),
@@ -45,3 +53,6 @@ export const buildTtsEndpointUrl = () => {
 
   return `${baseUrl}/${endpoint}`
 }
+
+export const buildDifyStopMessageUrl = (taskId: string) =>
+  DIGITAL_HUMAN_RUNTIME_CONFIG.difyStopMessageUrlTemplate.replace('{task_id}', encodeURIComponent(taskId))

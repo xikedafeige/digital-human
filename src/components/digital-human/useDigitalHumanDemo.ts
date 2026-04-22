@@ -1,4 +1,4 @@
-﻿import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import {
   buildDemoReply,
   buildMockSpeechResult,
@@ -7,13 +7,14 @@ import {
   SYSTEM_WELCOME,
 } from './demo-config'
 import type { AvatarState, DemoMessage, SpeechSynthesisResult } from './avatar-types'
+import { useDifyChat } from './useDifyChat'
 import { useSpeechRecognition } from './useSpeechRecognition'
 import { useSpeechSynthesis } from './useSpeechSynthesis'
 
 const createMessage = (
   role: DemoMessage['role'],
   content: string,
-  options: Partial<Pick<DemoMessage, 'pending' | 'source'>> = {}
+  options: Partial<Pick<DemoMessage, 'pending' | 'source' | 'engine' | 'conversationId'>> = {}
 ): DemoMessage => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   role,
@@ -21,7 +22,11 @@ const createMessage = (
   timestamp: Date.now(),
   pending: options.pending ?? false,
   source: options.source ?? (role === 'system' ? 'system' : 'text'),
+  engine: options.engine,
+  conversationId: options.conversationId,
 })
+
+const isAbortError = (error: unknown) => error instanceof DOMException && error.name === 'AbortError'
 
 export function useDigitalHumanDemo() {
   const isExpanded = ref(false)
@@ -31,6 +36,7 @@ export function useDigitalHumanDemo() {
   const messages = ref<DemoMessage[]>([createMessage('system', SYSTEM_WELCOME, { source: 'system' })])
   const speechResult = ref<SpeechSynthesisResult | null>(null)
   const speechToken = ref(0)
+  const conversationId = ref('')
 
   const suggestions = computed(() => DIGITAL_HUMAN_SUGGESTIONS)
   const hasInput = computed(() => inputText.value.trim().length > 0)
@@ -50,6 +56,10 @@ export function useDigitalHumanDemo() {
   let typingCompleted = false
   let speechCompleted = false
   let activeTtsController: AbortController | null = null
+  let activeDifyController: AbortController | null = null
+  let activeDifyTaskId = ''
+
+  const difyChatClient = useDifyChat()
   const speechRecognition = useSpeechRecognition({
     onPartial: (text) => {
       inputText.value = text
@@ -76,6 +86,21 @@ export function useDigitalHumanDemo() {
 
     activeTtsController.abort()
     activeTtsController = null
+  }
+
+  const cancelPendingDify = () => {
+    const taskId = activeDifyTaskId
+
+    if (activeDifyController) {
+      activeDifyController.abort()
+      activeDifyController = null
+    }
+
+    activeDifyTaskId = ''
+
+    if (taskId) {
+      void difyChatClient.stop(taskId)
+    }
   }
 
   const clearFlowTimers = () => {
@@ -105,6 +130,14 @@ export function useDigitalHumanDemo() {
     activeTypingMessageId = null
   }
 
+  const settlePendingMessages = () => {
+    messages.value.forEach((message) => {
+      if (message.pending) {
+        message.pending = false
+      }
+    })
+  }
+
   const clearActiveReplyState = () => {
     activeReplyFlowId = 0
     typingCompleted = false
@@ -116,6 +149,8 @@ export function useDigitalHumanDemo() {
     inputText.value = ''
     isRecording.value = false
     status.value = 'idle'
+    conversationId.value = ''
+    cancelPendingDify()
     cancelPendingSpeechSynthesis()
     setSpeechResult(null)
     clearActiveReplyState()
@@ -186,11 +221,93 @@ export function useDigitalHumanDemo() {
     tick()
   }
 
+  const finalizeReplySpeech = async (
+    flowId: number,
+    assistantMessage: DemoMessage,
+    reply: string,
+    engine: DemoMessage['engine'],
+    useTypingAnimation: boolean
+  ) => {
+    cancelPendingSpeechSynthesis()
+
+    const ttsController = new AbortController()
+    activeTtsController = ttsController
+
+    let synthesized: SpeechSynthesisResult
+
+    try {
+      synthesized = await speechSynthesisClient.synthesize(reply, {
+        signal: ttsController.signal,
+      })
+    } catch (error) {
+      if (activeTtsController === ttsController) {
+        activeTtsController = null
+      }
+
+      if (ttsController.signal.aborted || flowId !== activeFlowId) {
+        return
+      }
+
+      if (isAbortError(error)) {
+        return
+      }
+
+      synthesized = buildMockSpeechResult(reply)
+    }
+
+    if (activeTtsController === ttsController) {
+      activeTtsController = null
+    }
+
+    if (flowId !== activeFlowId) {
+      speechSynthesisClient.revoke(synthesized)
+      return
+    }
+
+    assistantMessage.engine = engine
+    assistantMessage.conversationId = conversationId.value || assistantMessage.conversationId
+    activeReplyFlowId = flowId
+    speechCompleted = false
+
+    if (useTypingAnimation) {
+      assistantMessage.content = ''
+      assistantMessage.pending = true
+      typingCompleted = false
+    } else {
+      assistantMessage.content = reply
+      assistantMessage.pending = false
+      typingCompleted = true
+    }
+
+    setSpeechResult(synthesized)
+    speechToken.value += 1
+    status.value = 'speaking'
+
+    if (useTypingAnimation) {
+      typeReply(flowId, assistantMessage.id, reply, synthesized.durationMs)
+    }
+  }
+
+  const runFallbackReplyFlow = async (flowId: number, question: string, assistantMessage: DemoMessage) => {
+    if (flowId !== activeFlowId) {
+      return
+    }
+
+    const fallbackReply = buildDemoReply(question)
+    assistantMessage.engine = 'fallback'
+    assistantMessage.content = ''
+    assistantMessage.pending = true
+
+    await finalizeReplySpeech(flowId, assistantMessage, fallbackReply, 'fallback', true)
+  }
+
   const cancelCurrentFlow = () => {
     activeFlowId += 1
     clearFlowTimers()
     stopTypingMessage()
+    settlePendingMessages()
     clearActiveReplyState()
+    cancelPendingDify()
     cancelPendingSpeechSynthesis()
     isRecording.value = false
     setSpeechResult(null)
@@ -198,10 +315,10 @@ export function useDigitalHumanDemo() {
   }
 
   const runReplyFlow = (question: string, source: DemoMessage['source']) => {
-    const reply = buildDemoReply(question)
-    const assistantMessage = createMessage('assistant', '正在思考中...', {
+    const assistantMessage = createMessage('assistant', 'Dify 正在生成回复...', {
       pending: true,
       source,
+      engine: 'dify',
     })
     const flowId = activeFlowId + 1
 
@@ -210,49 +327,78 @@ export function useDigitalHumanDemo() {
     messages.value.push(assistantMessage)
     status.value = 'thinking'
 
-    queueTimeout(async () => {
-      if (flowId !== activeFlowId) {
-        return
-      }
+    const difyController = new AbortController()
+    activeDifyController = difyController
+    activeDifyTaskId = ''
 
-      cancelPendingSpeechSynthesis()
-
-      const ttsController = new AbortController()
-      activeTtsController = ttsController
-
-      let synthesized: SpeechSynthesisResult
-
+    void (async () => {
       try {
-        synthesized = await speechSynthesisClient.synthesize(reply, {
-          signal: ttsController.signal,
+        const result = await difyChatClient.run(question, {
+          conversationId: conversationId.value,
+          signal: difyController.signal,
+          onTaskId: (taskId) => {
+            if (flowId !== activeFlowId) {
+              return
+            }
+
+            activeDifyTaskId = taskId
+          },
+          onConversationId: (nextConversationId) => {
+            if (flowId !== activeFlowId) {
+              return
+            }
+
+            conversationId.value = nextConversationId
+            assistantMessage.conversationId = nextConversationId
+          },
+          onText: (text) => {
+            if (flowId !== activeFlowId) {
+              return
+            }
+
+            assistantMessage.content = text || 'Dify 正在生成回复...'
+            assistantMessage.pending = true
+            assistantMessage.engine = 'dify'
+          },
         })
-      } catch {
-        if (activeTtsController === ttsController) {
-          activeTtsController = null
+
+        if (activeDifyController === difyController) {
+          activeDifyController = null
         }
 
-        if (ttsController.signal.aborted || flowId !== activeFlowId) {
+        activeDifyTaskId = ''
+
+        if (flowId !== activeFlowId) {
           return
         }
 
-        synthesized = buildMockSpeechResult(reply)
-      }
+        conversationId.value = result.conversationId || conversationId.value
+        assistantMessage.conversationId = conversationId.value || assistantMessage.conversationId
+        assistantMessage.engine = 'dify'
+        assistantMessage.content = result.text
+        assistantMessage.pending = true
 
-      if (activeTtsController === ttsController) {
-        activeTtsController = null
-      }
+        await finalizeReplySpeech(flowId, assistantMessage, result.text, 'dify', false)
+      } catch (error) {
+        const taskId = activeDifyTaskId
 
-      if (flowId !== activeFlowId) {
-        speechSynthesisClient.revoke(synthesized)
-        return
-      }
+        if (activeDifyController === difyController) {
+          activeDifyController = null
+        }
 
-      setSpeechResult(synthesized)
-      speechToken.value += 1
-      status.value = 'speaking'
-      speechCompleted = false
-      typeReply(flowId, assistantMessage.id, reply, synthesized.durationMs)
-    }, RESPONSE_TIMING.thinkingMs)
+        activeDifyTaskId = ''
+
+        if (flowId !== activeFlowId || difyController.signal.aborted || isAbortError(error)) {
+          return
+        }
+
+        if (taskId) {
+          void difyChatClient.stop(taskId)
+        }
+
+        await runFallbackReplyFlow(flowId, question, assistantMessage)
+      }
+    })()
   }
 
   const sendText = (rawText: string, source: DemoMessage['source'] = 'text') => {
@@ -345,6 +491,7 @@ export function useDigitalHumanDemo() {
   onBeforeUnmount(() => {
     clearFlowTimers()
     stopTypingMessage()
+    cancelPendingDify()
     cancelPendingSpeechSynthesis()
     setSpeechResult(null)
   })
