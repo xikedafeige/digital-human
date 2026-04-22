@@ -24,10 +24,13 @@ export const DIGITAL_HUMAN_RUNTIME_CONFIG = {
   ttsVoice: readStringEnv(import.meta.env.VITE_TTS_VOICE, 'xiaoxiao'),
   ttsResponseFormat: readStringEnv(import.meta.env.VITE_TTS_RESPONSE_FORMAT, 'mp3'),
   ttsSpeed: readStringEnv(import.meta.env.VITE_TTS_SPEED, '1.0'),
-  difyChatMessagesUrl: readStringEnv(import.meta.env.VITE_DIFY_CHAT_MESSAGES_URL, 'http://172.16.3.177/v1/chat-messages'),
+  difyChatMessagesUrl: readStringEnv(
+    import.meta.env.VITE_DIFY_CHAT_MESSAGES_URL,
+    'https://copilot.sino-bridge.com:90/v1/chat-messages'
+  ),
   difyStopMessageUrlTemplate: readStringEnv(
     import.meta.env.VITE_DIFY_STOP_MESSAGE_URL_TEMPLATE,
-    'http://172.16.3.177/v1/chat-messages/{task_id}/stop'
+    'https://copilot.sino-bridge.com:90/v1/chat-messages/{task_id}/stop'
   ),
   difyApiKey: readStringEnv(import.meta.env.VITE_DIFY_API_KEY, ''),
   difyUserPrefix: readStringEnv(import.meta.env.VITE_DIFY_USER_PREFIX, 'digital-human-demo'),

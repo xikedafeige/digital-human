@@ -1,4 +1,4 @@
-﻿<template>
+<template>
 	<section class="assistant-demo">
 		<div class="assistant-panel">
 			<header class="assistant-panel__header">
@@ -19,8 +19,12 @@
 
 			<div class="assistant-panel__body">
 				<div class="assistant-panel__stage-shell">
-					<VideoDigitalHumanStage :state="status" :speech-result="speechResult" :autoplay-token="speechToken"
-						@speech-complete="handleSpeechComplete" />
+					<VideoDigitalHumanStage
+						:state="status"
+						:speech-result="speechResult"
+						:autoplay-token="speechToken"
+						@speech-complete="handleSpeechComplete"
+					/>
 
 					<section class="assistant-panel__chat-card">
 						<header class="assistant-panel__chat-header">
@@ -32,8 +36,12 @@
 						</header>
 
 						<section ref="messagesRef" class="assistant-messages">
-							<article v-for="message in messages" :key="message.id" class="assistant-message"
-								:class="[`is-${message.role}`, { 'is-pending': message.pending }]">
+							<article
+								v-for="message in messages"
+								:key="message.id"
+								class="assistant-message"
+								:class="[`is-${message.role}`, { 'is-pending': message.pending }]"
+							>
 								<header class="assistant-message__meta">
 									<strong>{{ roleLabelMap[message.role] }}</strong>
 									<time>{{ formatTime(message.timestamp) }}</time>
@@ -45,23 +53,40 @@
 				</div>
 
 				<section class="assistant-suggestions">
-					<button v-for="item in suggestions" :key="item" type="button" class="assistant-suggestions__item"
-						@click="sendText(item)">
+					<button
+						v-for="item in suggestions"
+						:key="item"
+						type="button"
+						class="assistant-suggestions__item"
+						@click="sendText(item)"
+					>
 						{{ item }}
 					</button>
 				</section>
 
 				<footer class="assistant-input">
 					<div class="assistant-input__field-wrap">
-						<textarea v-model="inputText" class="assistant-input__field" rows="3" placeholder="输入问题..."
-							:disabled="isRecording" @keydown="handleInputKeydown"></textarea>
+						<textarea
+							v-model="inputText"
+							class="assistant-input__field"
+							rows="3"
+							placeholder="输入问题..."
+							:disabled="isRecording"
+							@keydown="handleInputKeydown"
+						></textarea>
 
-						<button type="button" class="assistant-input__voice-icon" :class="{ 'is-recording': isRecording }"
-							:aria-label="isRecording ? '停止录音' : '开始录音'" :title="isRecording ? '停止录音' : '开始录音'"
-							@click="toggleVoiceInput">
+						<button
+							type="button"
+							class="assistant-input__voice-icon"
+							:class="{ 'is-recording': isRecording }"
+							:aria-label="isRecording ? '停止录音' : '开始录音'"
+							:title="isRecording ? '停止录音' : '开始录音'"
+							@click="toggleVoiceInput"
+						>
 							<svg v-if="!isRecording" viewBox="0 0 24 24" aria-hidden="true">
 								<path
-									d="M12 14.5c1.7 0 3-1.3 3-3V6.8c0-1.7-1.3-3-3-3s-3 1.3-3 3v4.7c0 1.7 1.3 3 3 3Z" />
+									d="M12 14.5c1.7 0 3-1.3 3-3V6.8c0-1.7-1.3-3-3-3s-3 1.3-3 3v4.7c0 1.7 1.3 3 3 3Z"
+								/>
 								<path d="M6.5 11.2c0 3 2.4 5.5 5.5 5.5s5.5-2.5 5.5-5.5" />
 								<path d="M12 16.7v3.2" />
 								<path d="M9 19.9h6" />
@@ -121,7 +146,7 @@ const statusHint = computed(() => {
 	}
 
 	if (status.value === 'thinking') {
-		return 'Dify 回复生成中，请稍候。'
+		return '思考中...'
 	}
 
 	return latestAssistantText.value
@@ -261,9 +286,6 @@ watch(
 .assistant-panel__text-button {
 	border: none;
 	cursor: pointer;
-}
-
-.assistant-panel__text-button {
 	padding: 9px 12px;
 	border-radius: 999px;
 	color: #5e83ef;

@@ -8,7 +8,7 @@ export const DIGITAL_HUMAN_SUGGESTIONS = [
   '如何快速了解预算绩效流程？',
   '项目立项审批要准备哪些内容？',
   '事后评价一般分几步完成？',
-  '系统管理入口通常在哪里？',
+  '系统管理入口通常在哪？',
 ]
 
 export const SYSTEM_WELCOME =

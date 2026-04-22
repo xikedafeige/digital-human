@@ -11,6 +11,10 @@ import { useDifyChat } from './useDifyChat'
 import { useSpeechRecognition } from './useSpeechRecognition'
 import { useSpeechSynthesis } from './useSpeechSynthesis'
 
+const THINKING_PLACEHOLDER = '思考中...'
+const buildFallbackReplyText = (question: string) =>
+  `当前服务暂时不可用，先为你提供本地演示回复。\n\n${buildDemoReply(question)}`
+
 const createMessage = (
   role: DemoMessage['role'],
   content: string,
@@ -71,6 +75,9 @@ export function useDigitalHumanDemo() {
   })
   const speechSynthesisClient = useSpeechSynthesis()
 
+  const getMessageById = (messageId: string) =>
+    messages.value.find((message) => message.id === messageId) ?? null
+
   const setSpeechResult = (nextSpeechResult: SpeechSynthesisResult | null) => {
     if (speechResult.value && speechResult.value.audioUrl !== nextSpeechResult?.audioUrl) {
       speechSynthesisClient.revoke(speechResult.value)
@@ -122,7 +129,7 @@ export function useDigitalHumanDemo() {
       return
     }
 
-    const targetMessage = messages.value.find((message) => message.id === activeTypingMessageId)
+    const targetMessage = getMessageById(activeTypingMessageId)
     if (targetMessage) {
       targetMessage.pending = false
     }
@@ -180,54 +187,73 @@ export function useDigitalHumanDemo() {
     scheduleIdleTransition(flowId)
   }
 
-  const typeReply = (flowId: number, messageId: string, fullReply: string, durationMs: number) => {
-    activeTypingMessageId = messageId
-    activeReplyFlowId = flowId
-    typingCompleted = false
+  const streamReplyText = (flowId: number, messageId: string, fullReply: string) =>
+    new Promise<boolean>((resolve) => {
+      const targetMessage = getMessageById(messageId)
 
-    let index = 0
-    const intervalMs = Math.max(
-      16,
-      Math.floor(Math.max(RESPONSE_TIMING.typingIntervalMs, durationMs / Math.max(fullReply.length, 1)))
-    )
-
-    const tick = () => {
-      if (flowId !== activeFlowId) {
-        return
-      }
-
-      const targetMessage = messages.value.find((message) => message.id === messageId)
       if (!targetMessage) {
+        resolve(false)
+        return
+      }
+
+      if (!fullReply) {
+        targetMessage.content = ''
+        targetMessage.pending = false
+        typingCompleted = true
+        resolve(true)
+        return
+      }
+
+      activeTypingMessageId = messageId
+      typingCompleted = false
+
+      let index = 0
+      const intervalMs = Math.max(16, RESPONSE_TIMING.typingIntervalMs)
+
+      const tick = () => {
+        if (flowId !== activeFlowId) {
+          activeTypingMessageId = null
+          resolve(false)
+          return
+        }
+
+        const currentMessage = getMessageById(messageId)
+        if (!currentMessage) {
+          activeTypingMessageId = null
+          resolve(false)
+          return
+        }
+
+        index += 1
+        currentMessage.content = fullReply.slice(0, index)
+        currentMessage.pending = index < fullReply.length
+
+        if (index < fullReply.length) {
+          queueTimeout(tick, intervalMs)
+          return
+        }
+
+        currentMessage.content = fullReply
+        currentMessage.pending = false
         activeTypingMessageId = null
-        return
+        typingCompleted = true
+        resolve(true)
       }
 
-      index += 1
-      targetMessage.content = fullReply.slice(0, index)
-      targetMessage.pending = index < fullReply.length
-
-      if (index < fullReply.length) {
-        queueTimeout(tick, intervalMs)
-        return
-      }
-
-      activeTypingMessageId = null
-      targetMessage.content = fullReply
-      targetMessage.pending = false
-      typingCompleted = true
-      tryFinishReplyFlow(flowId)
-    }
-
-    tick()
-  }
+      tick()
+    })
 
   const finalizeReplySpeech = async (
     flowId: number,
-    assistantMessage: DemoMessage,
+    messageId: string,
     reply: string,
-    engine: DemoMessage['engine'],
-    useTypingAnimation: boolean
+    engine: DemoMessage['engine']
   ) => {
+    const targetMessage = getMessageById(messageId)
+    if (!targetMessage) {
+      return
+    }
+
     cancelPendingSpeechSynthesis()
 
     const ttsController = new AbortController()
@@ -264,41 +290,47 @@ export function useDigitalHumanDemo() {
       return
     }
 
-    assistantMessage.engine = engine
-    assistantMessage.conversationId = conversationId.value || assistantMessage.conversationId
-    activeReplyFlowId = flowId
-    speechCompleted = false
-
-    if (useTypingAnimation) {
-      assistantMessage.content = ''
-      assistantMessage.pending = true
-      typingCompleted = false
-    } else {
-      assistantMessage.content = reply
-      assistantMessage.pending = false
-      typingCompleted = true
+    const currentMessage = getMessageById(messageId)
+    if (!currentMessage) {
+      speechSynthesisClient.revoke(synthesized)
+      return
     }
+
+    currentMessage.engine = engine
+    currentMessage.conversationId = conversationId.value || currentMessage.conversationId
+    currentMessage.content = reply
+    currentMessage.pending = false
+
+    activeReplyFlowId = flowId
+    typingCompleted = true
+    speechCompleted = false
 
     setSpeechResult(synthesized)
     speechToken.value += 1
     status.value = 'speaking'
-
-    if (useTypingAnimation) {
-      typeReply(flowId, assistantMessage.id, reply, synthesized.durationMs)
-    }
   }
 
-  const runFallbackReplyFlow = async (flowId: number, question: string, assistantMessage: DemoMessage) => {
+  const runFallbackReplyFlow = async (flowId: number, question: string, messageId: string) => {
     if (flowId !== activeFlowId) {
       return
     }
 
-    const fallbackReply = buildDemoReply(question)
-    assistantMessage.engine = 'fallback'
-    assistantMessage.content = ''
-    assistantMessage.pending = true
+    const targetMessage = getMessageById(messageId)
+    if (!targetMessage) {
+      return
+    }
 
-    await finalizeReplySpeech(flowId, assistantMessage, fallbackReply, 'fallback', true)
+    const fallbackReply = buildFallbackReplyText(question)
+    targetMessage.engine = 'fallback'
+    targetMessage.content = ''
+    targetMessage.pending = true
+
+    const didCompleteStreaming = await streamReplyText(flowId, messageId, fallbackReply)
+    if (!didCompleteStreaming || flowId !== activeFlowId) {
+      return
+    }
+
+    await finalizeReplySpeech(flowId, messageId, fallbackReply, 'fallback')
   }
 
   const cancelCurrentFlow = () => {
@@ -315,18 +347,20 @@ export function useDigitalHumanDemo() {
   }
 
   const runReplyFlow = (question: string, source: DemoMessage['source']) => {
-    const assistantMessage = createMessage('assistant', 'Dify 正在生成回复...', {
+    const assistantMessage = createMessage('assistant', THINKING_PLACEHOLDER, {
       pending: true,
       source,
       engine: 'dify',
     })
     const flowId = activeFlowId + 1
+    let hasReceivedDifyText = false
 
     activeFlowId = flowId
     clearActiveReplyState()
     messages.value.push(assistantMessage)
     status.value = 'thinking'
 
+    const assistantMessageId = assistantMessage.id
     const difyController = new AbortController()
     activeDifyController = difyController
     activeDifyTaskId = ''
@@ -349,16 +383,27 @@ export function useDigitalHumanDemo() {
             }
 
             conversationId.value = nextConversationId
-            assistantMessage.conversationId = nextConversationId
+
+            const targetMessage = getMessageById(assistantMessageId)
+            if (targetMessage) {
+              targetMessage.conversationId = nextConversationId
+            }
           },
           onText: (text) => {
             if (flowId !== activeFlowId) {
               return
             }
 
-            assistantMessage.content = text || 'Dify 正在生成回复...'
-            assistantMessage.pending = true
-            assistantMessage.engine = 'dify'
+            const targetMessage = getMessageById(assistantMessageId)
+            if (!targetMessage) {
+              return
+            }
+
+            const normalizedText = text.trim()
+            hasReceivedDifyText = hasReceivedDifyText || Boolean(normalizedText)
+            targetMessage.content = normalizedText || THINKING_PLACEHOLDER
+            targetMessage.pending = true
+            targetMessage.engine = 'dify'
           },
         })
 
@@ -372,13 +417,37 @@ export function useDigitalHumanDemo() {
           return
         }
 
-        conversationId.value = result.conversationId || conversationId.value
-        assistantMessage.conversationId = conversationId.value || assistantMessage.conversationId
-        assistantMessage.engine = 'dify'
-        assistantMessage.content = result.text
-        assistantMessage.pending = true
+        const finalReply = result.text.trim()
+        if (!finalReply) {
+          await runFallbackReplyFlow(flowId, question, assistantMessageId)
+          return
+        }
 
-        await finalizeReplySpeech(flowId, assistantMessage, result.text, 'dify', false)
+        conversationId.value = result.conversationId || conversationId.value
+
+        const targetMessage = getMessageById(assistantMessageId)
+        if (!targetMessage) {
+          return
+        }
+
+        targetMessage.conversationId = conversationId.value || targetMessage.conversationId
+        targetMessage.engine = 'dify'
+        targetMessage.content = finalReply
+        targetMessage.pending = !hasReceivedDifyText
+
+        if (!hasReceivedDifyText) {
+          targetMessage.content = ''
+
+          const didCompleteStreaming = await streamReplyText(flowId, assistantMessageId, finalReply)
+          if (!didCompleteStreaming || flowId !== activeFlowId) {
+            return
+          }
+        } else {
+          targetMessage.pending = false
+          typingCompleted = true
+        }
+
+        await finalizeReplySpeech(flowId, assistantMessageId, finalReply, 'dify')
       } catch (error) {
         const taskId = activeDifyTaskId
 
@@ -392,11 +461,28 @@ export function useDigitalHumanDemo() {
           return
         }
 
+        const targetMessage = getMessageById(assistantMessageId)
+        const partialReply =
+          targetMessage && targetMessage.content.trim() && targetMessage.content !== THINKING_PLACEHOLDER
+            ? targetMessage.content.trim()
+            : ''
+
         if (taskId) {
           void difyChatClient.stop(taskId)
         }
 
-        await runFallbackReplyFlow(flowId, question, assistantMessage)
+        if (partialReply) {
+          if (targetMessage) {
+            targetMessage.pending = false
+            targetMessage.engine = 'dify'
+          }
+
+          typingCompleted = true
+          await finalizeReplySpeech(flowId, assistantMessageId, partialReply, 'dify')
+          return
+        }
+
+        await runFallbackReplyFlow(flowId, question, assistantMessageId)
       }
     })()
   }

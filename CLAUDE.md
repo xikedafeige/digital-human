@@ -19,6 +19,6 @@
   - **`useDigitalHumanDemo.ts`**：主要的 Composable，负责 thinking / speaking / idle 状态切换、打字机动画、ASR/TTS 联动。
   - **`useSpeechRecognition.ts`**：WebSocket ASR 封装。
   - **`useSpeechSynthesis.ts`**：TTS 请求与音频 URL 处理封装。
-  - **`runtime-config.ts`**：统一读取 `.env` 中的 ASR、TTS、视频素材和时序参数。
-- **环境配置**：运行参数通过 `.env` / `.env.example` 管理，使用 `VITE_*` 变量为 ASR、TTS、视频素材和回复时序提供配置入口。
+  - **`runtime-config.ts`**：统一读取 `.env.developement` 中的 ASR、TTS、视频素材和时序参数。
+- **环境配置**：运行参数通过 `.env.developement` / `env.developement.example` 管理，使用 `VITE_*` 变量为 ASR、TTS、视频素材和回复时序提供配置入口。
 - **静态资源/视频**：项目依赖 `public/videos/` 下的状态视频素材来呈现数字人待命、聆听、思考和回答状态。

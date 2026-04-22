@@ -1,19 +1,38 @@
 import { ref } from 'vue'
-import { buildDifyStopMessageUrl, DIGITAL_HUMAN_RUNTIME_CONFIG } from './runtime-config'
+import {
+  buildDifyStopMessageUrl,
+  DIGITAL_HUMAN_RUNTIME_CONFIG,
+} from './runtime-config'
 
 const DIFY_USER_STORAGE_KEY = 'digital-human:dify-user'
 
-const createAbortError = () => new DOMException('Dify chat aborted', 'AbortError')
+const createAbortError = () =>
+  new DOMException('Dify chat aborted', 'AbortError')
 
-interface DifyStreamPayload {
+interface DifyNestedPayload {
+  answer?: unknown
+  text?: unknown
+  content?: unknown
+  delta?: unknown
+  message?: unknown
+}
+
+interface DifyStreamPayload extends DifyNestedPayload {
   event?: string
-  answer?: string
   task_id?: string
   conversation_id?: string
   message_id?: string
   message?: string
   error?: string
+  data?: DifyNestedPayload | null
   [key: string]: unknown
+}
+
+interface DifyBlockingPayload {
+  answer?: string
+  task_id?: string
+  conversation_id?: string
+  message_id?: string
 }
 
 interface DifyChatHandlers {
@@ -83,11 +102,61 @@ const extractSseMessages = (buffer: string) => {
   }
 }
 
+const pickString = (...values: unknown[]) =>
+  values.find(
+    (value): value is string => typeof value === 'string' && value.length > 0,
+  ) ?? ''
+
+const extractPayloadText = (payload: DifyStreamPayload) => {
+  const nested = payload.data ?? {}
+  const eventType = typeof payload.event === 'string' ? payload.event : ''
+
+  if (eventType === 'error') {
+    return ''
+  }
+
+  return pickString(
+    payload.answer,
+    payload.text,
+    payload.content,
+    payload.delta,
+    eventType === 'message_end' ? '' : payload.message,
+    nested.answer,
+    nested.text,
+    nested.content,
+    nested.delta,
+    eventType === 'message_end' ? '' : nested.message,
+  )
+}
+
+const mergeAccumulatedText = (currentText: string, nextChunk: string) => {
+  if (!nextChunk) {
+    return currentText
+  }
+
+  if (!currentText) {
+    return nextChunk
+  }
+
+  if (nextChunk.startsWith(currentText)) {
+    return nextChunk
+  }
+
+  if (currentText.endsWith(nextChunk)) {
+    return currentText
+  }
+
+  return currentText + nextChunk
+}
+
 export function useDifyChat() {
   const errorMessage = ref('')
   const isStreaming = ref(false)
 
-  const run = async (question: string, options: DifyChatOptions = {}): Promise<DifyChatResult> => {
+  const run = async (
+    question: string,
+    options: DifyChatOptions = {},
+  ): Promise<DifyChatResult> => {
     const normalizedQuestion = question.trim()
 
     if (!normalizedQuestion) {
@@ -137,19 +206,58 @@ export function useDifyChat() {
         requestBody.conversation_id = latestConversationId
       }
 
-      const response = await fetch(DIGITAL_HUMAN_RUNTIME_CONFIG.difyChatMessagesUrl, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${DIGITAL_HUMAN_RUNTIME_CONFIG.difyApiKey}`,
-          'Content-Type': 'application/json',
+      const response = await fetch(
+        DIGITAL_HUMAN_RUNTIME_CONFIG.difyChatMessagesUrl,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${DIGITAL_HUMAN_RUNTIME_CONFIG.difyApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+          signal: requestController.signal,
         },
-        body: JSON.stringify(requestBody),
-        signal: requestController.signal,
-      })
+      )
 
       if (!response.ok) {
         const responseText = await response.text().catch(() => '')
-        throw new Error(responseText || `HTTP ${response.status}: ${response.statusText}`)
+        throw new Error(
+          responseText || `HTTP ${response.status}: ${response.statusText}`,
+        )
+      }
+
+      const contentType = response.headers.get('content-type') || ''
+
+      if (contentType.includes('application/json')) {
+        const payload = (await response.json()) as DifyBlockingPayload
+        console.info('[Dify blocking payload]', payload)
+
+        const finalText = pickString(payload.answer).trim()
+        if (!finalText) {
+          throw new Error('Dify blocking response returned an empty answer')
+        }
+
+        latestTaskId = pickString(payload.task_id)
+        latestConversationId =
+          pickString(payload.conversation_id) || latestConversationId
+        latestMessageId = pickString(payload.message_id)
+
+        options.onTaskId?.(latestTaskId)
+        options.onConversationId?.(latestConversationId)
+        options.onText?.(finalText, finalText)
+
+        console.info('[Dify final text]', {
+          task_id: latestTaskId,
+          conversation_id: latestConversationId,
+          finalText,
+        })
+
+        return {
+          text: finalText,
+          conversationId: latestConversationId,
+          taskId: latestTaskId,
+          messageId: latestMessageId,
+        }
       }
 
       if (!response.body) {
@@ -161,12 +269,17 @@ export function useDifyChat() {
       let buffer = ''
 
       const applyPayload = (payload: DifyStreamPayload) => {
+        console.info('[Dify SSE payload]', payload)
+
         if (typeof payload.task_id === 'string' && payload.task_id) {
           latestTaskId = payload.task_id
           options.onTaskId?.(payload.task_id)
         }
 
-        if (typeof payload.conversation_id === 'string' && payload.conversation_id) {
+        if (
+          typeof payload.conversation_id === 'string' &&
+          payload.conversation_id
+        ) {
           latestConversationId = payload.conversation_id
           options.onConversationId?.(payload.conversation_id)
         }
@@ -178,25 +291,24 @@ export function useDifyChat() {
         const eventType = typeof payload.event === 'string' ? payload.event : ''
 
         if (eventType === 'error') {
-          throw new Error(payload.message || payload.error || 'Dify chat returned an error')
+          throw new Error(
+            payload.message || payload.error || 'Dify chat returned an error',
+          )
         }
 
-        if (eventType === 'message_replace' && typeof payload.answer === 'string') {
-          accumulatedText = payload.answer
-          options.onText?.(accumulatedText, payload.answer)
+        const textChunk = extractPayloadText(payload)
+        if (!textChunk) {
           return
         }
 
-        if ((eventType === 'message' || eventType === 'agent_message') && typeof payload.answer === 'string') {
-          accumulatedText += payload.answer
-          options.onText?.(accumulatedText, payload.answer)
-          return
+        if (eventType === 'message_replace') {
+          accumulatedText = textChunk
+        } else {
+          accumulatedText = mergeAccumulatedText(accumulatedText, textChunk)
         }
 
-        if (eventType === 'message_end' && !accumulatedText && typeof payload.answer === 'string') {
-          accumulatedText = payload.answer
-          options.onText?.(accumulatedText, payload.answer)
-        }
+        console.log('accumulatedText', accumulatedText)
+        options.onText?.(accumulatedText, textChunk)
       }
 
       while (true) {
@@ -219,6 +331,7 @@ export function useDifyChat() {
           try {
             payload = JSON.parse(rawEvent) as DifyStreamPayload
           } catch {
+            console.info('[Dify SSE raw]', rawEvent)
             return
           }
 
@@ -238,6 +351,7 @@ export function useDifyChat() {
         try {
           payload = JSON.parse(rawEvent) as DifyStreamPayload
         } catch {
+          console.info('[Dify SSE raw]', rawEvent)
           return
         }
 
@@ -245,6 +359,12 @@ export function useDifyChat() {
       })
 
       const finalText = accumulatedText.trim()
+      console.info('[Dify final text]', {
+        task_id: latestTaskId,
+        conversation_id: latestConversationId,
+        finalText,
+      })
+
       if (!finalText) {
         throw new Error('Dify chat returned an empty answer')
       }
@@ -262,6 +382,7 @@ export function useDifyChat() {
           : error instanceof Error
             ? error.message
             : String(error)
+        console.error('[Dify chat error]', error)
       }
 
       if (didTimeout) {
@@ -295,7 +416,6 @@ export function useDifyChat() {
           Authorization: `Bearer ${DIGITAL_HUMAN_RUNTIME_CONFIG.difyApiKey}`,
           'Content-Type': 'application/json',
         },
-        // The stop API must receive the same user identifier as the chat request.
         body: JSON.stringify({
           user: buildSessionUserId(),
         }),
