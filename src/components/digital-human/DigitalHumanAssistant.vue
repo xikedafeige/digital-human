@@ -111,12 +111,15 @@
 						<button
 							type="button"
 							class="assistant-input__voice-icon"
-							:class="{ 'is-recording': isRecording }"
-							:aria-label="isRecording ? '停止录音' : '语音输入'"
-							:data-tooltip="isRecording ? '停止录音' : '语音输入'"
-							@click="toggleVoiceInput"
+							:class="{
+								'is-recording': voiceButtonMode === 'stop',
+								'is-interrupt': voiceButtonMode === 'interrupt',
+							}"
+							:aria-label="voiceButtonLabel"
+							:data-tooltip="voiceButtonLabel"
+							@click="handleVoiceButtonClick"
 						>
-							<svg v-if="!isRecording" viewBox="0 0 24 24" aria-hidden="true">
+							<svg v-if="voiceButtonMode === 'record'" viewBox="0 0 24 24" aria-hidden="true">
 								<path
 									d="M12 14.5c1.7 0 3-1.3 3-3V6.8c0-1.7-1.3-3-3-3s-3 1.3-3 3v4.7c0 1.7 1.3 3 3 3Z"
 								/>
@@ -125,15 +128,13 @@
 								<path d="M9 19.9h6" />
 							</svg>
 							<svg v-else viewBox="0 0 24 24" aria-hidden="true">
-								<path d="M9 8.5h6v7H9z" />
-								<path d="M5.8 10.2v3.6" />
-								<path d="M18.2 10.2v3.6" />
-								<path d="M3.5 11.1v1.8" />
-								<path d="M20.5 11.1v1.8" />
+								<rect x="8.3" y="8.3" width="7.4" height="7.4" rx="1.4" />
 							</svg>
 						</button>
 
-						<span v-if="isBusy" class="assistant-input__busy-tip">发送新问题会中断当前生成和播报</span>
+						<span v-if="isBusy || showVoiceInterruptButton" class="assistant-input__busy-tip">
+							{{ showVoiceInterruptButton ? '可点击右侧按钮打断当前语音链路' : '发送新问题会中断当前生成和播报' }}
+						</span>
 					</div>
 				</footer>
 			</div>
@@ -153,11 +154,13 @@ const {
 	clearConversation,
 	handleSpeechComplete,
 	inputText,
+	interruptCurrentVoiceFlow,
 	isBusy,
 	isRecording,
 	latestAssistantText,
 	messages,
 	sendText,
+	showVoiceInterruptButton,
 	speechResult,
 	speechToken,
 	startVoiceInput,
@@ -169,11 +172,16 @@ const {
 } = useDigitalHumanDemo()
 
 const messagesRef = ref<HTMLElement | null>(null)
+type VoiceButtonMode = 'record' | 'stop' | 'interrupt'
 
 const statusLabel = computed(() => VIDEO_STATUS_LABELS[status.value])
 const statusHint = computed(() => {
 	if (isRecording.value) {
-		return '录音中，再次点击麦克风后将自动发起提问。'
+		return '录音中，再次点击按钮后将结束录音并开始识别。'
+	}
+
+	if (showVoiceInterruptButton.value && !isBusy.value) {
+		return '正在等待语音识别结果，可点击右侧按钮打断。'
 	}
 
 	if (status.value === 'speaking') {
@@ -195,13 +203,42 @@ const roleLabelMap: Record<DemoMessage['role'], string> = {
 
 const renderMessageHtml = (content: string) => renderMarkdownToHtml(content)
 
-const toggleVoiceInput = () => {
+const voiceButtonMode = computed<VoiceButtonMode>(() => {
 	if (isRecording.value) {
-		stopVoiceInput()
+		return 'stop'
+	}
+
+	if (showVoiceInterruptButton.value) {
+		return 'interrupt'
+	}
+
+	return 'record'
+})
+
+const voiceButtonLabel = computed(() => {
+	if (voiceButtonMode.value === 'stop') {
+		return '停止录音'
+	}
+
+	if (voiceButtonMode.value === 'interrupt') {
+		return '打断回答'
+	}
+
+	return '语音输入'
+})
+
+const handleVoiceButtonClick = () => {
+	if (voiceButtonMode.value === 'stop') {
+		void stopVoiceInput()
 		return
 	}
 
-	startVoiceInput()
+	if (voiceButtonMode.value === 'interrupt') {
+		interruptCurrentVoiceFlow()
+		return
+	}
+
+	void startVoiceInput()
 }
 
 const handleInputKeydown = (event: KeyboardEvent) => {
@@ -627,7 +664,7 @@ watch(
 		transform 0.2s ease;
 }
 
-.assistant-input__voice-icon:hover:not(.is-recording) {
+.assistant-input__voice-icon:hover:not(.is-recording):not(.is-interrupt) {
 	background: linear-gradient(180deg, #f2f7ff, #e8f0ff);
 	color: #3f67f4;
 }
@@ -674,8 +711,20 @@ watch(
 	animation: voiceIconPulse 1.15s ease-in-out infinite;
 }
 
-.assistant-input__voice-icon.is-recording svg {
+.assistant-input__voice-icon.is-interrupt {
+	background: linear-gradient(180deg, #f7f7f7, #ebebeb);
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84);
+	color: #262b33;
+}
+
+.assistant-input__voice-icon.is-interrupt:hover {
+	background: linear-gradient(180deg, #f4f4f4, #e8e8e8);
+}
+
+.assistant-input__voice-icon.is-recording svg,
+.assistant-input__voice-icon.is-interrupt svg {
 	fill: currentColor;
+	stroke: none;
 }
 
 .assistant-input__busy-tip {

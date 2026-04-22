@@ -1,5 +1,6 @@
 import { onBeforeUnmount, ref } from 'vue'
 import { DIGITAL_HUMAN_RUNTIME_CONFIG } from './runtime-config'
+
 const STOP_RESULT_TIMEOUT_MS = 3000
 
 interface RecognitionSegment {
@@ -86,17 +87,19 @@ export function useSpeechRecognition(options: SpeechRecognitionOptions = {}) {
   }
 
   const cleanupWebSocket = () => {
-    if (ws) {
-      if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
-        ws.close()
-      }
-
-      ws.onopen = null
-      ws.onclose = null
-      ws.onerror = null
-      ws.onmessage = null
-      ws = null
+    if (!ws) {
+      return
     }
+
+    if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
+      ws.close()
+    }
+
+    ws.onopen = null
+    ws.onclose = null
+    ws.onerror = null
+    ws.onmessage = null
+    ws = null
   }
 
   const clearStopTimer = () => {
@@ -104,6 +107,11 @@ export function useSpeechRecognition(options: SpeechRecognitionOptions = {}) {
       window.clearTimeout(stopTimerId)
       stopTimerId = null
     }
+  }
+
+  const resetRecognitionText = () => {
+    partialText.value = ''
+    finalText.value = ''
   }
 
   const getBestRecognizedText = () => finalText.value.trim() || partialText.value.trim()
@@ -166,9 +174,8 @@ export function useSpeechRecognition(options: SpeechRecognitionOptions = {}) {
       return
     }
 
-    await stop()
-    partialText.value = ''
-    finalText.value = ''
+    await cancel()
+    resetRecognitionText()
     errorMessage.value = ''
     isRecognizing.value = true
 
@@ -272,18 +279,22 @@ export function useSpeechRecognition(options: SpeechRecognitionOptions = {}) {
     return stopPromise
   }
 
-  onBeforeUnmount(() => {
+  const cancel = async () => {
     clearStopTimer()
-    void cleanupAudio()
+    resetRecognitionText()
+    errorMessage.value = ''
 
-    if (ws?.readyState === WebSocket.OPEN) {
-      ws.send('end')
-    }
-
+    await cleanupAudio()
     cleanupWebSocket()
+    finishStop('')
+  }
+
+  onBeforeUnmount(() => {
+    void cancel()
   })
 
   return {
+    cancel,
     errorMessage,
     finalText,
     isRecognizing,
