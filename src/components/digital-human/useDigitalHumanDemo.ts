@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
   buildDemoReply,
   buildMockSpeechResult,
@@ -17,42 +17,11 @@ import { useSpeechRecognition } from './useSpeechRecognition'
 import { useSpeechSynthesis } from './useSpeechSynthesis'
 
 const THINKING_PLACEHOLDER = '思考中...'
-type SpeechSegmentKind = 'lead' | 'tail'
-
-const LEAD_SPEECH_MIN_CHARS = 100
-const WHITESPACE_RE = /\s/
 
 const buildFallbackReplyText = (question: string) =>
   `当前服务暂时不可用，先为你提供本地演示回复。\n\n${buildDemoReply(question)}`
 
 const normalizeSpeechText = (value: string) => value.replace(/\r\n/g, '\n').trim()
-
-const getLeadSpeechEndIndex = (value: string) => {
-  const normalizedValue = normalizeSpeechText(value)
-
-  if (!normalizedValue) {
-    return -1
-  }
-
-  let effectiveCharCount = 0
-
-  for (let index = 0; index < normalizedValue.length; index += 1) {
-    if (WHITESPACE_RE.test(normalizedValue[index])) {
-      continue
-    }
-
-    effectiveCharCount += 1
-
-    if (effectiveCharCount >= LEAD_SPEECH_MIN_CHARS) {
-      return index + 1
-    }
-  }
-
-  return -1
-}
-
-const getTailSpeechText = (value: string, startIndex: number) =>
-  normalizeSpeechText(startIndex > -1 ? value.slice(startIndex) : value)
 
 const createMessage = (
   role: DemoMessage['role'],
@@ -89,9 +58,10 @@ const isAbortError = (error: unknown) =>
 export function useDigitalHumanDemo() {
   const isExpanded = ref(false)
   const inputText = ref('')
+  const inputHint = ref('')
   const isRecording = ref(false)
   const isAwaitingVoiceRecognitionResult = ref(false)
-  const showVoiceInterruptButton = ref(false)
+  const showInterruptButton = ref(false)
   const status = ref<AvatarState>('idle')
   const messages = ref<DemoMessage[]>([
     createMessage('system', SYSTEM_WELCOME, {
@@ -126,13 +96,7 @@ export function useDigitalHumanDemo() {
   let activeTtsController: AbortController | null = null
   let activeDifyController: AbortController | null = null
   let activeDifyTaskId = ''
-  let activeSpeechSegment: SpeechSegmentKind | null = null
-  let flowStreamCompleted = false
-  let leadSpeechStarted = false
-  let leadSpeechCompleted = false
-  let tailSpeechStarted = false
-  let leadSpeechEndIndex = -1
-  let latestSpeechText = ''
+  let inputHintTimer: number | null = null
 
   const difyChatClient = useDifyChat()
   const speechRecognition = useSpeechRecognition({
@@ -149,26 +113,32 @@ export function useDigitalHumanDemo() {
   const getMessageById = (messageId: string) =>
     messages.value.find((message) => message.id === messageId) ?? null
 
-  const getMessageEngine = (
-    messageId: string,
-    fallbackEngine: DemoMessage['engine'],
-  ) => getMessageById(messageId)?.engine ?? fallbackEngine
+  const clearInputHint = () => {
+    if (inputHintTimer !== null) {
+      window.clearTimeout(inputHintTimer)
+      inputHintTimer = null
+    }
 
-  const clearVoiceInterruptState = () => {
-    showVoiceInterruptButton.value = false
+    inputHint.value = ''
+  }
+
+  const showTransientInputHint = (message: string) => {
+    clearInputHint()
+    inputHint.value = message
+    inputHintTimer = window.setTimeout(() => {
+      inputHintTimer = null
+      inputHint.value = ''
+    }, 3000)
+  }
+
+  const clearInterruptState = () => {
+    showInterruptButton.value = false
     isAwaitingVoiceRecognitionResult.value = false
   }
 
   const clearSpeechProgress = () => {
     activeSpeakingFlowId = 0
     currentAssistantMessageId = ''
-    activeSpeechSegment = null
-    flowStreamCompleted = false
-    leadSpeechStarted = false
-    leadSpeechCompleted = false
-    tailSpeechStarted = false
-    leadSpeechEndIndex = -1
-    latestSpeechText = ''
   }
 
   const setSpeechResult = (nextSpeechResult: SpeechSynthesisResult | null) => {
@@ -234,7 +204,7 @@ export function useDigitalHumanDemo() {
     }
 
     status.value = 'idle'
-    clearVoiceInterruptState()
+    clearInterruptState()
     setSpeechResult(null)
     clearSpeechProgress()
   }
@@ -282,22 +252,21 @@ export function useDigitalHumanDemo() {
       : true
   }
 
-  const startSpeechSegment = async (
+  const synthesizeAndStartSpeaking = async (
     flowId: number,
     messageId: string,
     speechText: string,
     engine: DemoMessage['engine'],
-    segmentKind: SpeechSegmentKind,
   ) => {
     const normalizedSpeechText = normalizeSpeechText(speechText)
     const targetMessage = getMessageById(messageId)
 
     if (!targetMessage || !normalizedSpeechText) {
+      finishFlowNow(flowId)
       return
     }
 
     cancelPendingSpeechSynthesis()
-    activeSpeechSegment = segmentKind
 
     const ttsController = new AbortController()
     activeTtsController = ttsController
@@ -318,10 +287,6 @@ export function useDigitalHumanDemo() {
         flowId !== activeFlowId ||
         isAbortError(error)
       ) {
-        if (activeSpeechSegment === segmentKind) {
-          activeSpeechSegment = null
-        }
-
         return
       }
 
@@ -332,22 +297,18 @@ export function useDigitalHumanDemo() {
       activeTtsController = null
     }
 
-    if (flowId !== activeFlowId || activeSpeechSegment !== segmentKind) {
+    if (flowId !== activeFlowId) {
       speechSynthesisClient.revoke(synthesized)
       return
     }
 
     const currentMessage = getMessageById(messageId)
     if (!currentMessage) {
-      if (activeSpeechSegment === segmentKind) {
-        activeSpeechSegment = null
-      }
-
       speechSynthesisClient.revoke(synthesized)
       return
     }
 
-    currentMessage.pending = flowStreamCompleted ? false : currentMessage.pending
+    currentMessage.pending = false
     currentMessage.engine = engine
     currentMessage.conversationId =
       conversationId.value || currentMessage.conversationId
@@ -356,84 +317,6 @@ export function useDigitalHumanDemo() {
     setSpeechResult(synthesized)
     speechToken.value += 1
     status.value = 'speaking'
-  }
-
-  const maybeStartLeadSpeech = (
-    flowId: number,
-    messageId: string,
-    speechText: string,
-    engine: DemoMessage['engine'],
-  ) => {
-    if (flowId !== activeFlowId || leadSpeechStarted || flowStreamCompleted) {
-      return
-    }
-
-    const normalizedSpeechText = normalizeSpeechText(speechText)
-    latestSpeechText = normalizedSpeechText
-
-    if (!normalizedSpeechText) {
-      return
-    }
-
-    const nextLeadSpeechEndIndex = getLeadSpeechEndIndex(normalizedSpeechText)
-    if (nextLeadSpeechEndIndex < 0) {
-      return
-    }
-
-    const leadSpeechText = normalizeSpeechText(
-      normalizedSpeechText.slice(0, nextLeadSpeechEndIndex),
-    )
-
-    if (!leadSpeechText) {
-      return
-    }
-
-    leadSpeechStarted = true
-    leadSpeechEndIndex = nextLeadSpeechEndIndex
-    void startSpeechSegment(
-      flowId,
-      messageId,
-      leadSpeechText,
-      engine,
-      'lead',
-    )
-  }
-
-  const startTailSpeechIfReady = (
-    flowId: number,
-    messageId: string,
-    engine: DemoMessage['engine'],
-  ) => {
-    if (
-      flowId !== activeFlowId ||
-      !flowStreamCompleted ||
-      tailSpeechStarted ||
-      activeSpeechSegment
-    ) {
-      return
-    }
-
-    const normalizedSpeechText = normalizeSpeechText(latestSpeechText)
-    if (!normalizedSpeechText) {
-      finishFlowNow(flowId)
-      return
-    }
-
-    if (leadSpeechStarted && !leadSpeechCompleted) {
-      return
-    }
-
-    const tailSpeechText = leadSpeechStarted
-      ? getTailSpeechText(normalizedSpeechText, leadSpeechEndIndex)
-      : normalizedSpeechText
-
-    if (!tailSpeechText) {
-      finishFlowNow(flowId)
-      return
-    }
-
-    tailSpeechStarted = true
-    void startSpeechSegment(flowId, messageId, tailSpeechText, engine, 'tail')
   }
 
   const finalizeSpeechFlow = (
@@ -446,9 +329,7 @@ export function useDigitalHumanDemo() {
       return
     }
 
-    latestSpeechText = normalizeSpeechText(speechText)
-    flowStreamCompleted = true
-    startTailSpeechIfReady(flowId, messageId, engine)
+    void synthesizeAndStartSpeaking(flowId, messageId, speechText, engine)
   }
 
   const streamMarkdownReply = (
@@ -545,14 +426,6 @@ export function useDigitalHumanDemo() {
       messageId,
       fallbackReply,
       'fallback',
-      (markdownText) => {
-        maybeStartLeadSpeech(
-          flowId,
-          messageId,
-          markdownToPlainText(markdownText),
-          'fallback',
-        )
-      },
     )
 
     if (!didCompleteStreaming || flowId !== activeFlowId) {
@@ -604,20 +477,20 @@ export function useDigitalHumanDemo() {
     cancelPendingDify()
     cancelPendingSpeechSynthesis()
     void speechRecognition.cancel()
-    clearVoiceInterruptState()
+    clearInterruptState()
+    clearInputHint()
     isRecording.value = false
     setSpeechResult(null)
     status.value = 'idle'
     clearSpeechProgress()
   }
 
-  const interruptCurrentVoiceFlow = () => {
-    if (!showVoiceInterruptButton.value && !isAwaitingVoiceRecognitionResult.value) {
+  const interruptCurrentFlow = () => {
+    if (!showInterruptButton.value && !isAwaitingVoiceRecognitionResult.value) {
       return
     }
 
     settleInterruptedAssistantMessage()
-    inputText.value = ''
     cancelCurrentFlow()
   }
 
@@ -637,7 +510,7 @@ export function useDigitalHumanDemo() {
     setSpeechResult(null)
     messages.value.push(assistantMessage)
     status.value = 'thinking'
-    showVoiceInterruptButton.value = source === 'voice'
+    showInterruptButton.value = true
 
     const assistantMessageId = assistantMessage.id
     const difyController = new AbortController()
@@ -678,12 +551,6 @@ export function useDigitalHumanDemo() {
               engine: 'dify',
               conversationId: conversationId.value,
             })
-            maybeStartLeadSpeech(
-              flowId,
-              assistantMessageId,
-              content.speechText,
-              'dify',
-            )
           },
         })
 
@@ -779,10 +646,7 @@ export function useDigitalHumanDemo() {
       cancelCurrentFlow()
     }
 
-    if (source !== 'voice') {
-      showVoiceInterruptButton.value = false
-    }
-
+    clearInputHint()
     isExpanded.value = true
     messages.value.push(
       createMessage('user', question, {
@@ -795,6 +659,7 @@ export function useDigitalHumanDemo() {
   }
 
   const submitInput = () => {
+    clearInputHint()
     sendText(inputText.value, 'text')
   }
 
@@ -810,7 +675,8 @@ export function useDigitalHumanDemo() {
     activeVoiceStopId += 1
     isExpanded.value = true
     clearFlowTimers()
-    clearVoiceInterruptState()
+    clearInterruptState()
+    clearInputHint()
     isRecording.value = true
     status.value = 'listening'
     inputText.value = ''
@@ -832,7 +698,7 @@ export function useDigitalHumanDemo() {
 
     isRecording.value = false
     status.value = 'idle'
-    showVoiceInterruptButton.value = true
+    showInterruptButton.value = true
     isAwaitingVoiceRecognitionResult.value = true
 
     const recognizedText = await speechRecognition.stop()
@@ -850,53 +716,27 @@ export function useDigitalHumanDemo() {
     const question = recognizedText || fallbackText
 
     if (question) {
+      clearInputHint()
       sendText(question, 'voice')
       return
     }
 
-    clearVoiceInterruptState()
+    clearInterruptState()
     inputText.value = ''
+    showTransientInputHint('未识别到内容，请重试。')
   }
 
   const handleSpeechComplete = () => {
     const flowId = activeFlowId
 
-    if (
-      status.value !== 'speaking' ||
-      activeSpeakingFlowId !== flowId ||
-      !activeSpeechSegment
-    ) {
+    if (status.value !== 'speaking' || activeSpeakingFlowId !== flowId) {
       setSpeechResult(null)
       activeSpeakingFlowId = 0
-      activeSpeechSegment = null
       return
     }
-
-    const completedSegment = activeSpeechSegment
-    const messageId = currentAssistantMessageId
-    const engine = getMessageEngine(messageId, 'dify')
 
     setSpeechResult(null)
     activeSpeakingFlowId = 0
-    activeSpeechSegment = null
-
-    if (completedSegment === 'lead') {
-      leadSpeechCompleted = true
-
-      if (flowStreamCompleted) {
-        startTailSpeechIfReady(flowId, messageId, engine)
-
-        if (!tailSpeechStarted) {
-          finishFlowNow(flowId)
-        }
-
-        return
-      }
-
-      status.value = 'thinking'
-      return
-    }
-
     scheduleIdleTransition(flowId)
   }
 
@@ -932,7 +772,8 @@ export function useDigitalHumanDemo() {
     cancelPendingDify()
     cancelPendingSpeechSynthesis()
     void speechRecognition.cancel()
-    clearVoiceInterruptState()
+    clearInterruptState()
+    clearInputHint()
     setSpeechResult(null)
     clearSpeechProgress()
   }
@@ -947,9 +788,16 @@ export function useDigitalHumanDemo() {
     cancelPendingDify()
     cancelPendingSpeechSynthesis()
     void speechRecognition.cancel()
-    clearVoiceInterruptState()
+    clearInterruptState()
+    clearInputHint()
     setSpeechResult(null)
     clearSpeechProgress()
+  })
+
+  watch(inputText, (nextValue, previousValue) => {
+    if (nextValue !== previousValue && inputHint.value) {
+      clearInputHint()
+    }
   })
 
   return {
@@ -958,15 +806,16 @@ export function useDigitalHumanDemo() {
     expand,
     handleSpeechComplete,
     hasInput,
+    inputHint,
     inputText,
-    interruptCurrentVoiceFlow,
+    interruptCurrentFlow,
     isBusy,
     isExpanded,
     isRecording,
     latestAssistantText,
     messages,
     sendText,
-    showVoiceInterruptButton,
+    showInterruptButton,
     speechResult,
     speechToken,
     startVoiceInput,

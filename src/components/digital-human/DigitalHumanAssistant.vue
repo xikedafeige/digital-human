@@ -112,14 +112,14 @@
 							type="button"
 							class="assistant-input__voice-icon"
 							:class="{
-								'is-recording': voiceButtonMode === 'stop',
-								'is-interrupt': voiceButtonMode === 'interrupt',
+								'is-recording': actionButtonMode === 'stop',
+								'is-interrupt': actionButtonMode === 'interrupt',
 							}"
-							:aria-label="voiceButtonLabel"
-							:data-tooltip="voiceButtonLabel"
-							@click="handleVoiceButtonClick"
+							:aria-label="actionButtonLabel"
+							:data-tooltip="actionButtonLabel"
+							@click="handleActionButtonClick"
 						>
-							<svg v-if="voiceButtonMode === 'record'" viewBox="0 0 24 24" aria-hidden="true">
+							<svg v-if="actionButtonMode === 'record'" viewBox="0 0 24 24" aria-hidden="true">
 								<path
 									d="M12 14.5c1.7 0 3-1.3 3-3V6.8c0-1.7-1.3-3-3-3s-3 1.3-3 3v4.7c0 1.7 1.3 3 3 3Z"
 								/>
@@ -127,14 +127,19 @@
 								<path d="M12 16.7v3.2" />
 								<path d="M9 19.9h6" />
 							</svg>
+							<svg v-else-if="actionButtonMode === 'send'" viewBox="0 0 24 24" aria-hidden="true">
+								<path d="M21 3 10 14" />
+								<path d="m21 3-7 18-4-7-7-4 18-7Z" />
+							</svg>
 							<svg v-else viewBox="0 0 24 24" aria-hidden="true">
 								<rect x="8.3" y="8.3" width="7.4" height="7.4" rx="1.4" />
 							</svg>
 						</button>
 
-						<span v-if="isBusy || showVoiceInterruptButton" class="assistant-input__busy-tip">
-							{{ showVoiceInterruptButton ? '可点击右侧按钮打断当前语音链路' : '发送新问题会中断当前生成和播报' }}
+						<span v-if="isBusy || showInterruptButton" class="assistant-input__busy-tip">
+							{{ showInterruptButton ? '可点击右侧按钮中断当前流程' : '发送新问题会中断当前生成和播报' }}
 						</span>
+						<span v-if="inputHint" class="assistant-input__hint">{{ inputHint }}</span>
 					</div>
 				</footer>
 			</div>
@@ -153,14 +158,16 @@ import { VIDEO_STATUS_LABELS } from './video-avatar-config'
 const {
 	clearConversation,
 	handleSpeechComplete,
+	hasInput,
+	inputHint,
 	inputText,
-	interruptCurrentVoiceFlow,
+	interruptCurrentFlow,
 	isBusy,
 	isRecording,
 	latestAssistantText,
 	messages,
 	sendText,
-	showVoiceInterruptButton,
+	showInterruptButton,
 	speechResult,
 	speechToken,
 	startVoiceInput,
@@ -172,7 +179,7 @@ const {
 } = useDigitalHumanDemo()
 
 const messagesRef = ref<HTMLElement | null>(null)
-type VoiceButtonMode = 'record' | 'stop' | 'interrupt'
+type ActionButtonMode = 'record' | 'send' | 'stop' | 'interrupt'
 
 const statusLabel = computed(() => VIDEO_STATUS_LABELS[status.value])
 const statusHint = computed(() => {
@@ -180,7 +187,7 @@ const statusHint = computed(() => {
 		return '录音中，再次点击按钮后将结束录音并开始识别。'
 	}
 
-	if (showVoiceInterruptButton.value && !isBusy.value) {
+	if (showInterruptButton.value && !isBusy.value) {
 		return '正在等待语音识别结果，可点击右侧按钮打断。'
 	}
 
@@ -203,38 +210,51 @@ const roleLabelMap: Record<DemoMessage['role'], string> = {
 
 const renderMessageHtml = (content: string) => renderMarkdownToHtml(content)
 
-const voiceButtonMode = computed<VoiceButtonMode>(() => {
+const actionButtonMode = computed<ActionButtonMode>(() => {
 	if (isRecording.value) {
 		return 'stop'
 	}
 
-	if (showVoiceInterruptButton.value) {
+	if (showInterruptButton.value) {
 		return 'interrupt'
+	}
+
+	if (hasInput.value) {
+		return 'send'
 	}
 
 	return 'record'
 })
 
-const voiceButtonLabel = computed(() => {
-	if (voiceButtonMode.value === 'stop') {
+const actionButtonLabel = computed(() => {
+	if (actionButtonMode.value === 'stop') {
 		return '停止录音'
 	}
 
-	if (voiceButtonMode.value === 'interrupt') {
+	if (actionButtonMode.value === 'interrupt') {
 		return '打断回答'
+	}
+
+	if (actionButtonMode.value === 'send') {
+		return '发送'
 	}
 
 	return '语音输入'
 })
 
-const handleVoiceButtonClick = () => {
-	if (voiceButtonMode.value === 'stop') {
+const handleActionButtonClick = () => {
+	if (actionButtonMode.value === 'stop') {
 		void stopVoiceInput()
 		return
 	}
 
-	if (voiceButtonMode.value === 'interrupt') {
-		interruptCurrentVoiceFlow()
+	if (actionButtonMode.value === 'interrupt') {
+		interruptCurrentFlow()
+		return
+	}
+
+	if (actionButtonMode.value === 'send') {
+		submitInput()
 		return
 	}
 
@@ -246,7 +266,7 @@ const handleInputKeydown = (event: KeyboardEvent) => {
 		return
 	}
 
-	if (event.key === 'Enter' && !event.shiftKey) {
+	if (event.key === 'Enter' && !event.shiftKey && actionButtonMode.value === 'send') {
 		event.preventDefault()
 		submitInput()
 	}
@@ -731,6 +751,13 @@ watch(
 	padding-right: 48px;
 	color: #ef7e2f;
 	font-size: 12px;
+}
+
+.assistant-input__hint {
+	padding-right: 48px;
+	color: #d95f40;
+	font-size: 12px;
+	line-height: 1.4;
 }
 
 @keyframes voiceIconPulse {
