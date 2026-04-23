@@ -7,13 +7,17 @@ const readStringEnv = (value: string | undefined, fallback: string) => {
 const readNumberEnv = (value: string | undefined, fallback: number) => {
   const parsedValue = Number(value)
 
-  return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : fallback
+  return Number.isFinite(parsedValue) && parsedValue > 0
+    ? parsedValue
+    : fallback
 }
 
 const normalizePath = (value: string | undefined, fallback: string) => {
   const normalizedValue = readStringEnv(value, fallback)
 
-  return normalizedValue.startsWith('/') ? normalizedValue : `/${normalizedValue}`
+  return normalizedValue.startsWith('/')
+    ? normalizedValue
+    : `/${normalizedValue}`
 }
 
 const normalizeWebSocketUrl = (value: string | undefined, fallback: string) => {
@@ -33,7 +37,7 @@ const normalizeWebSocketUrl = (value: string | undefined, fallback: string) => {
 export const DIGITAL_HUMAN_RUNTIME_CONFIG = {
   asrWsUrl: normalizeWebSocketUrl(
     import.meta.env.VITE_ASR_WS_URL,
-    'https://copilot.sino-bridge.com/xiren-api/v1/ws/recognize',
+    'ws://1.92.158.195:8001/ws/recognize',
   ),
   ttsBaseUrl: readStringEnv(
     import.meta.env.VITE_TTS_BASE_URL,
@@ -65,7 +69,10 @@ export const DIGITAL_HUMAN_RUNTIME_CONFIG = {
   ),
   difyTimeoutMs: readNumberEnv(import.meta.env.VITE_DIFY_TIMEOUT_MS, 60000),
   videoSources: {
-    idle: normalizePath(import.meta.env.VITE_VIDEO_IDLE_SRC, '/videos/idle.mp4'),
+    idle: normalizePath(
+      import.meta.env.VITE_VIDEO_IDLE_SRC,
+      '/videos/idle.mp4',
+    ),
     listening: normalizePath(
       import.meta.env.VITE_VIDEO_LISTENING_SRC,
       '/videos/listening.mp4',
