@@ -16,16 +16,33 @@ const normalizePath = (value: string | undefined, fallback: string) => {
   return normalizedValue.startsWith('/') ? normalizedValue : `/${normalizedValue}`
 }
 
+const normalizeWebSocketUrl = (value: string | undefined, fallback: string) => {
+  const normalizedValue = readStringEnv(value, fallback)
+
+  if (normalizedValue.startsWith('https://')) {
+    return normalizedValue.replace(/^https:\/\//, 'wss://')
+  }
+
+  if (normalizedValue.startsWith('http://')) {
+    return normalizedValue.replace(/^http:\/\//, 'ws://')
+  }
+
+  return normalizedValue
+}
+
 export const DIGITAL_HUMAN_RUNTIME_CONFIG = {
-  asrWsUrl: readStringEnv(
+  asrWsUrl: normalizeWebSocketUrl(
     import.meta.env.VITE_ASR_WS_URL,
-    'ws://192.168.113.44:8001/ws/recognize',
+    'https://copilot.sino-bridge.com/xiren-api/v1/ws/recognize',
   ),
   ttsBaseUrl: readStringEnv(
     import.meta.env.VITE_TTS_BASE_URL,
-    'http://192.168.113.44:8001',
+    'https://copilot.sino-bridge.com',
   ),
-  ttsEndpoint: normalizePath(import.meta.env.VITE_TTS_ENDPOINT, '/v1/audio/speech'),
+  ttsEndpoint: normalizePath(
+    import.meta.env.VITE_TTS_ENDPOINT,
+    '/xiren-api/v1/audio/speech',
+  ),
   ttsModel: readStringEnv(import.meta.env.VITE_TTS_MODEL, 'matcha-tts'),
   ttsVoice: readStringEnv(import.meta.env.VITE_TTS_VOICE, 'xiaoxiao'),
   ttsResponseFormat: readStringEnv(
