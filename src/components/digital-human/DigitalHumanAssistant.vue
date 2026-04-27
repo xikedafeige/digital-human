@@ -136,10 +136,19 @@
 							</svg>
 						</button>
 
-						<span v-if="isBusy || showInterruptButton" class="assistant-input__busy-tip">
-							{{ showInterruptButton ? '可点击右侧按钮中断当前流程' : '发送新问题会中断当前生成和播报' }}
-						</span>
-						<span v-if="inputHint" class="assistant-input__hint">{{ inputHint }}</span>
+						<div class="assistant-input__helper" aria-live="polite">
+							<span
+								class="assistant-input__helper-text"
+								:class="{
+									'is-busy': helperTone === 'busy',
+									'is-hint': helperTone === 'hint',
+									'is-empty': !helperText,
+								}"
+								:title="helperTitle"
+							>
+								{{ helperText || ' ' }}
+							</span>
+						</div>
 					</div>
 				</footer>
 			</div>
@@ -164,6 +173,7 @@ const {
 	interruptCurrentFlow,
 	isBusy,
 	isRecording,
+	isSpeechSynthesizing,
 	latestAssistantText,
 	messages,
 	sendText,
@@ -180,6 +190,7 @@ const {
 
 const messagesRef = ref<HTMLElement | null>(null)
 type ActionButtonMode = 'record' | 'send' | 'stop' | 'interrupt'
+type HelperTone = 'idle' | 'busy' | 'hint'
 
 const statusLabel = computed(() => VIDEO_STATUS_LABELS[status.value])
 const statusHint = computed(() => {
@@ -189,6 +200,10 @@ const statusHint = computed(() => {
 
 	if (showInterruptButton.value && !isBusy.value) {
 		return '正在等待语音识别结果，可点击右侧按钮打断。'
+	}
+
+	if (isSpeechSynthesizing.value) {
+		return '语音服务请求中...'
 	}
 
 	if (status.value === 'speaking') {
@@ -241,6 +256,42 @@ const actionButtonLabel = computed(() => {
 
 	return '语音输入'
 })
+
+const helperTone = computed<HelperTone>(() => {
+	if (inputHint.value) {
+		return 'hint'
+	}
+
+	if (isSpeechSynthesizing.value) {
+		return 'busy'
+	}
+
+	if (isBusy.value || showInterruptButton.value) {
+		return 'busy'
+	}
+
+	return 'idle'
+})
+
+const helperText = computed(() => {
+	if (inputHint.value) {
+		return inputHint.value
+	}
+
+	if (isSpeechSynthesizing.value) {
+		return '语音服务请求中...'
+	}
+
+	if (isBusy.value || showInterruptButton.value) {
+		return showInterruptButton.value
+			? '可点击右侧按钮中断当前流程'
+			: '发送新问题会中断当前生成和播报'
+	}
+
+	return ''
+})
+
+const helperTitle = computed(() => helperText.value || '')
 
 const handleActionButtonClick = () => {
 	if (actionButtonMode.value === 'stop') {
@@ -636,6 +687,7 @@ watch(
 }
 
 .assistant-input {
+	min-width: 0;
 	padding: 12px;
 	border-radius: 22px;
 	border: 1px solid rgba(221, 230, 247, 0.95);
@@ -646,7 +698,9 @@ watch(
 .assistant-input__field-wrap {
 	position: relative;
 	display: grid;
-	gap: 8px;
+	min-width: 0;
+	grid-template-rows: auto 18px;
+	row-gap: 8px;
 }
 
 .assistant-input__field {
@@ -747,17 +801,38 @@ watch(
 	stroke: none;
 }
 
-.assistant-input__busy-tip {
+.assistant-input__helper {
+	width: 100%;
+	min-width: 0;
+	max-width: 100%;
+	min-height: 18px;
 	padding-right: 48px;
-	color: #ef7e2f;
-	font-size: 12px;
 }
 
-.assistant-input__hint {
-	padding-right: 48px;
-	color: #d95f40;
+.assistant-input__helper-text {
+	display: block;
+	width: 100%;
+	min-width: 0;
+	max-width: 100%;
+	min-height: 18px;
+	color: transparent;
 	font-size: 12px;
-	line-height: 1.4;
+	line-height: 18px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.assistant-input__helper-text.is-busy {
+	color: #ef7e2f;
+}
+
+.assistant-input__helper-text.is-hint {
+	color: #d95f40;
+}
+
+.assistant-input__helper-text.is-empty {
+	visibility: hidden;
 }
 
 @keyframes voiceIconPulse {

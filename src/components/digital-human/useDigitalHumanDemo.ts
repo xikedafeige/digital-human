@@ -109,6 +109,9 @@ export function useDigitalHumanDemo() {
     onError: () => {},
   })
   const speechSynthesisClient = useSpeechSynthesis()
+  const isSpeechSynthesizing = computed(
+    () => speechSynthesisClient.isSynthesizing.value,
+  )
 
   const getMessageById = (messageId: string) =>
     messages.value.find((message) => message.id === messageId) ?? null
@@ -207,16 +210,6 @@ export function useDigitalHumanDemo() {
     clearInterruptState()
     setSpeechResult(null)
     clearSpeechProgress()
-  }
-
-  const scheduleIdleTransition = (flowId: number) => {
-    queueTimeout(() => {
-      if (flowId !== activeFlowId || activeSpeakingFlowId !== flowId) {
-        return
-      }
-
-      finishFlowNow(flowId)
-    }, RESPONSE_TIMING.speakingTailMs)
   }
 
   const updateAssistantMessage = (
@@ -737,7 +730,7 @@ export function useDigitalHumanDemo() {
 
     setSpeechResult(null)
     activeSpeakingFlowId = 0
-    scheduleIdleTransition(flowId)
+    finishFlowNow(flowId)
   }
 
   const toggleThinkVisibility = (messageId: string) => {
@@ -812,6 +805,7 @@ export function useDigitalHumanDemo() {
     isBusy,
     isExpanded,
     isRecording,
+    isSpeechSynthesizing,
     latestAssistantText,
     messages,
     sendText,
