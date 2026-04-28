@@ -24,6 +24,7 @@
 						:speech-result="speechResult"
 						:autoplay-token="speechToken"
 						@speech-complete="handleSpeechComplete"
+						@speech-progress="handleSpeechProgress"
 					/>
 
 					<section class="assistant-panel__chat-card">
@@ -40,7 +41,13 @@
 								v-for="message in messages"
 								:key="message.id"
 								class="assistant-message"
-								:class="[`is-${message.role}`, { 'is-pending': message.pending }]"
+								:class="[
+									`is-${message.role}`,
+									{
+										'is-pending': message.pending,
+										'is-speech-active': message.id === speechPlaybackMessageId,
+									},
+								]"
 							>
 								<header class="assistant-message__meta">
 									<strong>{{ roleLabelMap[message.role] }}</strong>
@@ -80,6 +87,26 @@
 								<p v-else-if="message.content" class="assistant-message__plain">
 									{{ message.content }}
 								</p>
+
+								<div
+									v-if="message.id === speechPlaybackMessageId && speechFollowText"
+									class="assistant-message__follow"
+								>
+									<span class="assistant-message__follow-done">
+										{{ speechFollowText.slice(0, speechFollowHighlightIndex) }}
+									</span>
+									<span class="assistant-message__follow-rest">
+										{{ speechFollowText.slice(speechFollowHighlightIndex) }}
+									</span>
+								</div>
+
+								<div
+									v-if="message.id === speechPlaybackMessageId"
+									class="assistant-message__speech-progress"
+									aria-hidden="true"
+								>
+									<span :style="{ transform: `scaleX(${speechOverallProgress})` }"></span>
+								</div>
 							</article>
 						</section>
 					</section>
@@ -167,6 +194,7 @@ import { VIDEO_STATUS_LABELS } from './video-avatar-config'
 const {
 	clearConversation,
 	handleSpeechComplete,
+	handleSpeechProgress,
 	hasInput,
 	inputHint,
 	inputText,
@@ -179,6 +207,10 @@ const {
 	sendText,
 	showInterruptButton,
 	speechResult,
+	speechFollowHighlightIndex,
+	speechFollowText,
+	speechOverallProgress,
+	speechPlaybackMessageId,
 	speechToken,
 	startVoiceInput,
 	status,
@@ -567,6 +599,12 @@ watch(
 	opacity: 0.82;
 }
 
+.assistant-message.is-speech-active {
+	box-shadow:
+		inset 0 0 0 1px rgba(79, 120, 255, 0.18),
+		0 10px 22px rgba(79, 120, 255, 0.08);
+}
+
 .assistant-message__meta {
 	display: flex;
 	align-items: center;
@@ -684,6 +722,46 @@ watch(
 	padding: 0 12px 12px;
 	color: #5b6c88;
 	font-size: 13px;
+}
+
+.assistant-message__follow {
+	margin-top: 10px;
+	padding: 10px 12px;
+	border-radius: 14px;
+	background: rgba(79, 120, 255, 0.08);
+	color: #8a97ad;
+	font-size: 13px;
+	line-height: 1.7;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.assistant-message__follow-done {
+	color: #2457ff;
+	font-weight: 700;
+}
+
+.assistant-message__follow-rest {
+	color: #8a97ad;
+}
+
+.assistant-message__speech-progress {
+	height: 3px;
+	margin-top: 10px;
+	border-radius: 999px;
+	background: rgba(79, 120, 255, 0.12);
+	overflow: hidden;
+}
+
+.assistant-message__speech-progress span {
+	display: block;
+	width: 100%;
+	height: 100%;
+	border-radius: inherit;
+	background: linear-gradient(90deg, #6d92ff, #4f78ff);
+	transform: scaleX(0);
+	transform-origin: left center;
+	transition: transform 120ms linear;
 }
 
 .assistant-input {

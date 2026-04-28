@@ -17,6 +17,10 @@ import { useSpeechRecognition } from './useSpeechRecognition'
 import { useSpeechSynthesis } from './useSpeechSynthesis'
 
 const THINKING_PLACEHOLDER = '思考中...'
+const SPEECH_SEGMENT_EFFECTIVE_CHARS = 100
+const SPEECH_SEGMENT_MAX_LOOKAHEAD_CHARS = 40
+const SENTENCE_END_CHARS = '。！？；.!?;'
+const WHITESPACE_RE = /\s/
 
 const buildFallbackReplyText = (question: string) =>
   `当前服务暂时不可用，先为你提供本地演示回复。\n\n${buildDemoReply(question)}`
@@ -55,6 +59,30 @@ const createMessage = (
 const isAbortError = (error: unknown) =>
   error instanceof DOMException && error.name === 'AbortError'
 
+interface TtsQueueItem {
+  flowId: number
+  messageId: string
+  sequence: number
+  text: string
+  startIndex: number
+  endIndex: number
+  startEffectiveChar: number
+  endEffectiveChar: number
+  engine: DemoMessage['engine']
+}
+
+interface PlaybackQueueItem {
+  flowId: number
+  messageId: string
+  sequence: number
+  speechResult: SpeechSynthesisResult
+  startIndex: number
+  endIndex: number
+  startEffectiveChar: number
+  endEffectiveChar: number
+  engine: DemoMessage['engine']
+}
+
 export function useDigitalHumanDemo() {
   const isExpanded = ref(false)
   const inputText = ref('')
@@ -71,6 +99,11 @@ export function useDigitalHumanDemo() {
   ])
   const speechResult = ref<SpeechSynthesisResult | null>(null)
   const speechToken = ref(0)
+  const speechPlaybackProgress = ref(0)
+  const speechPlaybackMessageId = ref('')
+  const speechOverallProgress = ref(0)
+  const speechFollowText = ref('')
+  const speechFollowHighlightIndex = ref(0)
   const conversationId = ref('')
 
   const suggestions = computed(() => DIGITAL_HUMAN_SUGGESTIONS)
@@ -97,6 +130,20 @@ export function useDigitalHumanDemo() {
   let activeDifyController: AbortController | null = null
   let activeDifyTaskId = ''
   let inputHintTimer: number | null = null
+  let ttsQueue: TtsQueueItem[] = []
+  let playbackQueue: PlaybackQueueItem[] = []
+  let isTtsQueueRunning = false
+  let isPlaybackQueueRunning = false
+  let queuedSpeechEndIndex = 0
+  let queuedSpeechEffectiveChars = 0
+  let speechSegmentSequence = 0
+  let streamSpeechText = ''
+  let latestBodyMarkdown = ''
+  let displayedSpeechText = ''
+  let activePlaybackItem: PlaybackQueueItem | null = null
+  let completedSpeechEffectiveChars = 0
+  let totalSpeechEffectiveChars = 0
+  let difyStreamCompleted = false
 
   const difyChatClient = useDifyChat()
   const speechRecognition = useSpeechRecognition({
@@ -141,7 +188,93 @@ export function useDigitalHumanDemo() {
 
   const clearSpeechProgress = () => {
     activeSpeakingFlowId = 0
+    speechPlaybackProgress.value = 0
+    speechPlaybackMessageId.value = ''
+    speechOverallProgress.value = 0
+    speechFollowText.value = ''
+    speechFollowHighlightIndex.value = 0
     currentAssistantMessageId = ''
+    activePlaybackItem = null
+    completedSpeechEffectiveChars = 0
+    displayedSpeechText = ''
+  }
+
+  const resetSpeechQueueState = () => {
+    ttsQueue = []
+    playbackQueue = []
+    isTtsQueueRunning = false
+    isPlaybackQueueRunning = false
+    queuedSpeechEndIndex = 0
+    queuedSpeechEffectiveChars = 0
+    speechSegmentSequence = 0
+    streamSpeechText = ''
+    latestBodyMarkdown = ''
+    totalSpeechEffectiveChars = 0
+    difyStreamCompleted = false
+  }
+
+  const isSentenceEndChar = (value: string) => SENTENCE_END_CHARS.includes(value)
+
+  const countEffectiveChars = (text: string) => {
+    let effectiveChars = 0
+
+    for (let index = 0; index < text.length; index += 1) {
+      if (!WHITESPACE_RE.test(text[index])) {
+        effectiveChars += 1
+      }
+    }
+
+    return effectiveChars
+  }
+
+  const getTextIndexByRatio = (text: string, ratio: number) =>
+    Math.max(0, Math.min(text.length, Math.floor(text.length * ratio)))
+
+  // Find a speech segment end near the target length, preferring sentence boundaries.
+  const getSpeechSegmentEndIndex = (
+    text: string,
+    startIndex: number,
+    includeTail = false,
+  ) => {
+    let effectiveChars = 0
+    let targetEndIndex = -1
+    let lookaheadEffectiveChars = 0
+
+    for (let index = startIndex; index < text.length; index += 1) {
+      if (WHITESPACE_RE.test(text[index])) {
+        continue
+      }
+
+      effectiveChars += 1
+
+      if (targetEndIndex === -1) {
+        if (effectiveChars >= SPEECH_SEGMENT_EFFECTIVE_CHARS) {
+          targetEndIndex = index + 1
+
+          if (isSentenceEndChar(text[index])) {
+            return targetEndIndex
+          }
+        }
+
+        continue
+      }
+
+      lookaheadEffectiveChars += 1
+
+      if (isSentenceEndChar(text[index])) {
+        return index + 1
+      }
+
+      if (lookaheadEffectiveChars >= SPEECH_SEGMENT_MAX_LOOKAHEAD_CHARS) {
+        return index + 1
+      }
+    }
+
+    if (includeTail && text.slice(startIndex).trim()) {
+      return text.length
+    }
+
+    return -1
   }
 
   const setSpeechResult = (nextSpeechResult: SpeechSynthesisResult | null) => {
@@ -201,12 +334,72 @@ export function useDigitalHumanDemo() {
     })
   }
 
+  const updateSpeechOverallProgress = (segmentProgress = speechPlaybackProgress.value) => {
+    if (!activePlaybackItem || totalSpeechEffectiveChars <= 0) {
+      speechOverallProgress.value = 0
+      return
+    }
+
+    const currentSegmentEffectiveChars = Math.max(
+      0,
+      activePlaybackItem.endEffectiveChar - activePlaybackItem.startEffectiveChar,
+    )
+    const playedEffectiveChars =
+      completedSpeechEffectiveChars +
+      currentSegmentEffectiveChars * Math.max(0, Math.min(1, segmentProgress))
+
+    speechOverallProgress.value = Math.max(
+      0,
+      Math.min(1, playedEffectiveChars / Math.max(1, totalSpeechEffectiveChars)),
+    )
+  }
+
+  const syncVisibleSpeechText = (messageId: string, segmentProgress = 0) => {
+    const targetMessage = getMessageById(messageId)
+    if (!targetMessage || !activePlaybackItem) {
+      return
+    }
+
+    const currentSegmentText = streamSpeechText.slice(
+      activePlaybackItem.startIndex,
+      activePlaybackItem.endIndex,
+    )
+    const currentSegmentVisibleIndex = getTextIndexByRatio(
+      currentSegmentText,
+      segmentProgress,
+    )
+
+    displayedSpeechText = (
+      streamSpeechText.slice(0, activePlaybackItem.startIndex) +
+      currentSegmentText.slice(0, currentSegmentVisibleIndex)
+    ).trim()
+    targetMessage.content = displayedSpeechText
+    targetMessage.renderMode = 'markdown'
+  }
+
+  const revealFinalAssistantMessage = () => {
+    if (!currentAssistantMessageId) {
+      return
+    }
+
+    const targetMessage = getMessageById(currentAssistantMessageId)
+    if (!targetMessage) {
+      return
+    }
+
+    targetMessage.content = latestBodyMarkdown || displayedSpeechText
+    targetMessage.pending = false
+    targetMessage.renderMode = 'markdown'
+  }
+
   const finishFlowNow = (flowId: number) => {
     if (flowId !== activeFlowId) {
       return
     }
 
+    revealFinalAssistantMessage()
     status.value = 'idle'
+    resetSpeechQueueState()
     clearInterruptState()
     setSpeechResult(null)
     clearSpeechProgress()
@@ -223,8 +416,10 @@ export function useDigitalHumanDemo() {
       return
     }
 
+    latestBodyMarkdown = content.bodyMarkdown || latestBodyMarkdown
+
     const nextBodyContent =
-      content.bodyMarkdown ||
+      displayedSpeechText ||
       (content.thinkMarkdown ? '' : THINKING_PLACEHOLDER)
 
     targetMessage.content = nextBodyContent
@@ -245,24 +440,98 @@ export function useDigitalHumanDemo() {
       : true
   }
 
-  const synthesizeAndStartSpeaking = async (
-    flowId: number,
-    messageId: string,
-    speechText: string,
-    engine: DemoMessage['engine'],
-  ) => {
-    const normalizedSpeechText = normalizeSpeechText(speechText)
-    const targetMessage = getMessageById(messageId)
-
-    if (!targetMessage || !normalizedSpeechText) {
-      finishFlowNow(flowId)
+  const finishSpeechQueueIfReady = (flowId: number) => {
+    if (flowId !== activeFlowId) {
       return
     }
 
-    cancelPendingSpeechSynthesis()
+    if (isPlaybackQueueRunning || playbackQueue.length > 0) {
+      return
+    }
+
+    if (isTtsQueueRunning || ttsQueue.length > 0 || !difyStreamCompleted) {
+      status.value = 'thinking'
+      return
+    }
+
+    finishFlowNow(flowId)
+  }
+
+  const startQueuedPlayback = (item: PlaybackQueueItem) => {
+    if (item.flowId !== activeFlowId) {
+      speechSynthesisClient.revoke(item.speechResult)
+      return false
+    }
+
+    const currentMessage = getMessageById(item.messageId)
+    if (!currentMessage) {
+      speechSynthesisClient.revoke(item.speechResult)
+      return false
+    }
+
+    currentMessage.pending = !difyStreamCompleted
+    currentMessage.engine = item.engine
+    currentMessage.conversationId =
+      conversationId.value || currentMessage.conversationId
+
+    activeSpeakingFlowId = item.flowId
+    activePlaybackItem = item
+    speechPlaybackProgress.value = 0
+    speechPlaybackMessageId.value = item.messageId
+    speechFollowText.value = item.speechResult.text
+    speechFollowHighlightIndex.value = 0
+    syncVisibleSpeechText(item.messageId, 0)
+    updateSpeechOverallProgress(0)
+    setSpeechResult(item.speechResult)
+    speechToken.value += 1
+    status.value = 'speaking'
+    return true
+  }
+
+  const drainPlaybackQueue = (flowId: number) => {
+    if (flowId !== activeFlowId || isPlaybackQueueRunning) {
+      return
+    }
+
+    const nextItem = playbackQueue.shift()
+
+    if (!nextItem) {
+      finishSpeechQueueIfReady(flowId)
+      return
+    }
+
+    if (nextItem.flowId !== activeFlowId) {
+      speechSynthesisClient.revoke(nextItem.speechResult)
+      drainPlaybackQueue(flowId)
+      return
+    }
+
+    isPlaybackQueueRunning = true
+    if (!startQueuedPlayback(nextItem)) {
+      isPlaybackQueueRunning = false
+      drainPlaybackQueue(flowId)
+    }
+  }
+
+  const synthesizeQueuedSpeech = async (item: TtsQueueItem) => {
+    const normalizedSpeechText = normalizeSpeechText(item.text)
+    const targetMessage = getMessageById(item.messageId)
+
+    if (
+      item.flowId !== activeFlowId ||
+      !targetMessage ||
+      !normalizedSpeechText
+    ) {
+      isTtsQueueRunning = false
+      finishSpeechQueueIfReady(item.flowId)
+      return
+    }
 
     const ttsController = new AbortController()
     activeTtsController = ttsController
+    if (!isPlaybackQueueRunning) {
+      status.value = 'thinking'
+    }
 
     let synthesized: SpeechSynthesisResult
 
@@ -277,9 +546,10 @@ export function useDigitalHumanDemo() {
 
       if (
         ttsController.signal.aborted ||
-        flowId !== activeFlowId ||
+        item.flowId !== activeFlowId ||
         isAbortError(error)
       ) {
+        isTtsQueueRunning = false
         return
       }
 
@@ -290,26 +560,141 @@ export function useDigitalHumanDemo() {
       activeTtsController = null
     }
 
+    if (item.flowId !== activeFlowId) {
+      speechSynthesisClient.revoke(synthesized)
+      isTtsQueueRunning = false
+      return
+    }
+
+    if (!getMessageById(item.messageId)) {
+      speechSynthesisClient.revoke(synthesized)
+      isTtsQueueRunning = false
+      finishSpeechQueueIfReady(item.flowId)
+      return
+    }
+
+    playbackQueue.push({
+      flowId: item.flowId,
+      messageId: item.messageId,
+      sequence: item.sequence,
+      speechResult: synthesized,
+      startIndex: item.startIndex,
+      endIndex: item.endIndex,
+      startEffectiveChar: item.startEffectiveChar,
+      endEffectiveChar: item.endEffectiveChar,
+      engine: item.engine,
+    })
+    playbackQueue.sort((left, right) => left.sequence - right.sequence)
+    isTtsQueueRunning = false
+    drainPlaybackQueue(item.flowId)
+    drainTtsQueue(item.flowId)
+  }
+
+  const drainTtsQueue = (flowId: number) => {
+    if (flowId !== activeFlowId || isTtsQueueRunning) {
+      return
+    }
+
+    const nextItem = ttsQueue.shift()
+
+    if (!nextItem) {
+      finishSpeechQueueIfReady(flowId)
+      return
+    }
+
+    if (nextItem.flowId !== activeFlowId) {
+      drainTtsQueue(flowId)
+      return
+    }
+
+    isTtsQueueRunning = true
+    void synthesizeQueuedSpeech(nextItem)
+  }
+
+  const enqueueSpeechSegments = (
+    flowId: number,
+    messageId: string,
+    speechText: string,
+    engine: DemoMessage['engine'],
+    includeTail = false,
+  ) => {
     if (flowId !== activeFlowId) {
-      speechSynthesisClient.revoke(synthesized)
       return
     }
 
-    const currentMessage = getMessageById(messageId)
-    if (!currentMessage) {
-      speechSynthesisClient.revoke(synthesized)
-      return
+    const normalizedSpeechText = normalizeSpeechText(speechText)
+    streamSpeechText = normalizedSpeechText
+    totalSpeechEffectiveChars = countEffectiveChars(normalizedSpeechText)
+
+    if (queuedSpeechEndIndex > normalizedSpeechText.length) {
+      queuedSpeechEndIndex = normalizedSpeechText.length
+      queuedSpeechEffectiveChars = countEffectiveChars(
+        normalizedSpeechText.slice(0, queuedSpeechEndIndex),
+      )
     }
 
-    currentMessage.pending = false
-    currentMessage.engine = engine
-    currentMessage.conversationId =
-      conversationId.value || currentMessage.conversationId
+    while (queuedSpeechEndIndex < normalizedSpeechText.length) {
+      const segmentStartIndex = queuedSpeechEndIndex
+      const segmentEndIndex = getSpeechSegmentEndIndex(
+        normalizedSpeechText,
+        segmentStartIndex,
+        includeTail,
+      )
 
-    activeSpeakingFlowId = flowId
-    setSpeechResult(synthesized)
-    speechToken.value += 1
-    status.value = 'speaking'
+      if (segmentEndIndex === -1) {
+        break
+      }
+
+      const rawSegmentText = normalizedSpeechText.slice(
+        segmentStartIndex,
+        segmentEndIndex,
+      )
+      const segmentText = rawSegmentText.trim()
+      queuedSpeechEndIndex = segmentEndIndex
+
+      if (segmentText) {
+        const segmentEffectiveChars = countEffectiveChars(rawSegmentText)
+        speechSegmentSequence += 1
+        ttsQueue.push({
+          flowId,
+          messageId,
+          sequence: speechSegmentSequence,
+          text: segmentText,
+          startIndex: segmentStartIndex,
+          endIndex: segmentEndIndex,
+          startEffectiveChar: queuedSpeechEffectiveChars,
+          endEffectiveChar: queuedSpeechEffectiveChars + segmentEffectiveChars,
+          engine,
+        })
+        queuedSpeechEffectiveChars += segmentEffectiveChars
+      }
+    }
+
+    if (includeTail && queuedSpeechEndIndex < normalizedSpeechText.length) {
+      const tailStartIndex = queuedSpeechEndIndex
+      const rawTailText = normalizedSpeechText.slice(tailStartIndex)
+      const tailText = rawTailText.trim()
+      queuedSpeechEndIndex = normalizedSpeechText.length
+
+      if (tailText) {
+        const tailEffectiveChars = countEffectiveChars(rawTailText)
+        speechSegmentSequence += 1
+        ttsQueue.push({
+          flowId,
+          messageId,
+          sequence: speechSegmentSequence,
+          text: tailText,
+          startIndex: tailStartIndex,
+          endIndex: normalizedSpeechText.length,
+          startEffectiveChar: queuedSpeechEffectiveChars,
+          endEffectiveChar: queuedSpeechEffectiveChars + tailEffectiveChars,
+          engine,
+        })
+        queuedSpeechEffectiveChars += tailEffectiveChars
+      }
+    }
+
+    drainTtsQueue(flowId)
   }
 
   const finalizeSpeechFlow = (
@@ -322,7 +707,14 @@ export function useDigitalHumanDemo() {
       return
     }
 
-    void synthesizeAndStartSpeaking(flowId, messageId, speechText, engine)
+    difyStreamCompleted = true
+    enqueueSpeechSegments(
+      flowId,
+      messageId,
+      speechText || streamSpeechText,
+      engine,
+      true,
+    )
   }
 
   const streamMarkdownReply = (
@@ -366,23 +758,26 @@ export function useDigitalHumanDemo() {
 
         index += 1
         const isPending = index < fullReply.length
+        const currentMarkdown = fullReply.slice(0, index)
 
-        currentMessage.content = fullReply.slice(0, index)
+        latestBodyMarkdown = currentMarkdown
+        currentMessage.content = displayedSpeechText || THINKING_PLACEHOLDER
         currentMessage.thinkContent = ''
         currentMessage.thinkCollapsed = true
         currentMessage.pending = isPending
         currentMessage.engine = engine
         currentMessage.renderMode = 'markdown'
-        onProgress?.(currentMessage.content)
+        onProgress?.(currentMarkdown)
 
         if (isPending) {
           queueTimeout(tick, intervalMs)
           return
         }
 
-        currentMessage.content = fullReply
+        latestBodyMarkdown = fullReply
+        currentMessage.content = displayedSpeechText || THINKING_PLACEHOLDER
         currentMessage.pending = false
-        onProgress?.(currentMessage.content)
+        onProgress?.(fullReply)
         resolve(true)
       }
 
@@ -419,6 +814,14 @@ export function useDigitalHumanDemo() {
       messageId,
       fallbackReply,
       'fallback',
+      (markdownText) => {
+        enqueueSpeechSegments(
+          flowId,
+          messageId,
+          markdownToPlainText(markdownText),
+          'fallback',
+        )
+      },
     )
 
     if (!didCompleteStreaming || flowId !== activeFlowId) {
@@ -469,6 +872,7 @@ export function useDigitalHumanDemo() {
     settlePendingMessages()
     cancelPendingDify()
     cancelPendingSpeechSynthesis()
+    resetSpeechQueueState()
     void speechRecognition.cancel()
     clearInterruptState()
     clearInputHint()
@@ -498,6 +902,7 @@ export function useDigitalHumanDemo() {
     const flowId = activeFlowId + 1
 
     activeFlowId = flowId
+    resetSpeechQueueState()
     clearSpeechProgress()
     currentAssistantMessageId = assistantMessage.id
     setSpeechResult(null)
@@ -544,6 +949,12 @@ export function useDigitalHumanDemo() {
               engine: 'dify',
               conversationId: conversationId.value,
             })
+            enqueueSpeechSegments(
+              flowId,
+              assistantMessageId,
+              content.speechText,
+              'dify',
+            )
           },
         })
 
@@ -600,7 +1011,7 @@ export function useDigitalHumanDemo() {
           targetMessage.content !== THINKING_PLACEHOLDER
             ? targetMessage.content.trim()
             : ''
-        const partialSpeechText = markdownToPlainText(partialBody)
+        const partialSpeechText = streamSpeechText || markdownToPlainText(partialBody)
 
         if (taskId) {
           void difyChatClient.stop(taskId)
@@ -729,8 +1140,50 @@ export function useDigitalHumanDemo() {
     }
 
     setSpeechResult(null)
+    if (activePlaybackItem) {
+      completedSpeechEffectiveChars = activePlaybackItem.endEffectiveChar
+      displayedSpeechText = streamSpeechText
+        .slice(0, activePlaybackItem.endIndex)
+        .trim()
+
+      const currentMessage = getMessageById(activePlaybackItem.messageId)
+      if (currentMessage) {
+        currentMessage.content = displayedSpeechText
+      }
+    }
     activeSpeakingFlowId = 0
-    finishFlowNow(flowId)
+    activePlaybackItem = null
+    isPlaybackQueueRunning = false
+    speechPlaybackProgress.value = 0
+    speechPlaybackMessageId.value = ''
+    speechFollowText.value = ''
+    speechFollowHighlightIndex.value = 0
+    speechOverallProgress.value =
+      totalSpeechEffectiveChars > 0
+        ? Math.max(
+            0,
+            Math.min(1, completedSpeechEffectiveChars / totalSpeechEffectiveChars),
+          )
+        : 0
+    drainPlaybackQueue(flowId)
+  }
+
+  const handleSpeechProgress = (progress: number) => {
+    if (status.value !== 'speaking') {
+      return
+    }
+
+    const nextProgress = Math.max(0, Math.min(1, progress))
+    speechPlaybackProgress.value = nextProgress
+    speechFollowHighlightIndex.value = getTextIndexByRatio(
+      speechFollowText.value,
+      nextProgress,
+    )
+    updateSpeechOverallProgress(nextProgress)
+
+    if (activePlaybackItem) {
+      syncVisibleSpeechText(activePlaybackItem.messageId, nextProgress)
+    }
   }
 
   const toggleThinkVisibility = (messageId: string) => {
@@ -764,6 +1217,7 @@ export function useDigitalHumanDemo() {
     conversationId.value = ''
     cancelPendingDify()
     cancelPendingSpeechSynthesis()
+    resetSpeechQueueState()
     void speechRecognition.cancel()
     clearInterruptState()
     clearInputHint()
@@ -780,6 +1234,7 @@ export function useDigitalHumanDemo() {
     clearFlowTimers()
     cancelPendingDify()
     cancelPendingSpeechSynthesis()
+    resetSpeechQueueState()
     void speechRecognition.cancel()
     clearInterruptState()
     clearInputHint()
@@ -798,6 +1253,7 @@ export function useDigitalHumanDemo() {
     collapse,
     expand,
     handleSpeechComplete,
+    handleSpeechProgress,
     hasInput,
     inputHint,
     inputText,
@@ -811,6 +1267,11 @@ export function useDigitalHumanDemo() {
     sendText,
     showInterruptButton,
     speechResult,
+    speechFollowHighlightIndex,
+    speechFollowText,
+    speechOverallProgress,
+    speechPlaybackMessageId,
+    speechPlaybackProgress,
     speechToken,
     startVoiceInput,
     status,

@@ -50,6 +50,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   (e: 'speech-complete'): void
+  (e: 'speech-progress', progress: number): void
 }>()
 
 const stageStates: AvatarState[] = ['idle', 'listening', 'thinking', 'speaking']
@@ -70,6 +71,7 @@ const pendingState = ref<AvatarState | null>(null)
 
 let playbackSessionId = 0
 let speechTimerId: number | null = null
+let speechProgressTimerId: number | null = null
 let activeAudio: HTMLAudioElement | null = null
 let activeUtterance: SpeechSynthesisUtterance | null = null
 
@@ -83,6 +85,13 @@ const clearSpeechTimer = () => {
   if (speechTimerId !== null) {
     window.clearTimeout(speechTimerId)
     speechTimerId = null
+  }
+}
+
+const clearSpeechProgressTimer = () => {
+  if (speechProgressTimerId !== null) {
+    window.clearInterval(speechProgressTimerId)
+    speechProgressTimerId = null
   }
 }
 
@@ -110,6 +119,7 @@ const cleanupUtterance = () => {
 const stopSpeechPlayback = () => {
   playbackSessionId += 1
   clearSpeechTimer()
+  clearSpeechProgressTimer()
   cleanupAudio()
   cleanupUtterance()
 
@@ -123,8 +133,40 @@ const finishSpeechPlayback = (sessionId: number) => {
     return
   }
 
+  emit('speech-progress', 1)
   stopSpeechPlayback()
   emit('speech-complete')
+}
+
+const startSpeechProgress = (
+  sessionId: number,
+  speech: SpeechSynthesisResult,
+  audio?: HTMLAudioElement,
+) => {
+  clearSpeechProgressTimer()
+  emit('speech-progress', 0)
+
+  const startTime = performance.now()
+  const fallbackDurationMs = Math.max(1, speech.durationMs)
+
+  speechProgressTimerId = window.setInterval(() => {
+    if (sessionId !== playbackSessionId) {
+      clearSpeechProgressTimer()
+      return
+    }
+
+    const audioDuration = audio?.duration
+    const hasAudioDuration =
+      typeof audioDuration === 'number' &&
+      Number.isFinite(audioDuration) &&
+      audioDuration > 0
+
+    const nextProgress = hasAudioDuration
+      ? (audio?.currentTime ?? 0) / audioDuration
+      : (performance.now() - startTime) / fallbackDurationMs
+
+    emit('speech-progress', Math.max(0, Math.min(1, nextProgress)))
+  }, 120)
 }
 
 const startSpeechPlayback = async (speech: SpeechSynthesisResult) => {
@@ -141,6 +183,7 @@ const startSpeechPlayback = async (speech: SpeechSynthesisResult) => {
     audio.preload = 'auto'
     audio.onended = () => finishSpeechPlayback(sessionId)
     audio.onerror = () => finishSpeechPlayback(sessionId)
+    startSpeechProgress(sessionId, speech, audio)
 
     try {
       await audio.play()
@@ -165,6 +208,7 @@ const startSpeechPlayback = async (speech: SpeechSynthesisResult) => {
     utterance.onerror = () => finishSpeechPlayback(sessionId)
     activeUtterance = utterance
     window.speechSynthesis.cancel()
+    startSpeechProgress(sessionId, speech)
     window.speechSynthesis.speak(utterance)
   } catch {
     cleanupUtterance()
