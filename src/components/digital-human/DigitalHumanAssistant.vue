@@ -1,6 +1,6 @@
 <template>
 	<section class="assistant-demo">
-		<div class="assistant-panel">
+		<div class="assistant-panel" :class="{ 'is-wide': isWidePanel }">
 			<header class="assistant-panel__header">
 				<div class="assistant-panel__identity">
 					<span class="assistant-panel__status-dot" :class="`is-${status}`"></span>
@@ -11,6 +11,35 @@
 				</div>
 
 				<div class="assistant-panel__actions">
+					<button
+						type="button"
+						class="assistant-panel__icon-button"
+						:aria-label="isWidePanel ? '收起面板' : '展开面板'"
+						:title="isWidePanel ? '收起面板' : '展开面板'"
+						:data-tooltip="isWidePanel ? '收起面板' : '展开面板'"
+						@click="isWidePanel = !isWidePanel"
+					>
+						<svg v-if="!isWidePanel" viewBox="0 0 24 24" aria-hidden="true">
+							<path d="M8 5H5v3" />
+							<path d="M5 5l5.2 5.2" />
+							<path d="M16 19h3v-3" />
+							<path d="M19 19l-5.2-5.2" />
+							<path d="M16 5h3v3" />
+							<path d="M19 5l-5.2 5.2" />
+							<path d="M8 19H5v-3" />
+							<path d="M5 19l5.2-5.2" />
+						</svg>
+						<svg v-else viewBox="0 0 24 24" aria-hidden="true">
+							<path d="M10 4v6H4" />
+							<path d="M4 10l6-6" />
+							<path d="M14 20v-6h6" />
+							<path d="M20 14l-6 6" />
+							<path d="M14 4v6h6" />
+							<path d="M20 10l-6-6" />
+							<path d="M10 20v-6H4" />
+							<path d="M4 14l6 6" />
+						</svg>
+					</button>
 					<button
 						type="button"
 						class="assistant-panel__icon-button"
@@ -233,6 +262,7 @@ const {
 } = useDigitalHumanDemo()
 
 const messagesRef = ref<HTMLElement | null>(null)
+const isWidePanel = ref(false)
 type ActionButtonMode = 'record' | 'send' | 'stop' | 'interrupt'
 type HelperTone = 'idle' | 'busy' | 'hint'
 
@@ -418,6 +448,10 @@ watch(
 	overflow: hidden;
 }
 
+.assistant-panel.is-wide {
+	width: min(760px, calc(100vw - 32px));
+}
+
 .assistant-panel__header {
 	display: flex;
 	align-items: center;
@@ -537,8 +571,8 @@ watch(
 
 .assistant-panel__stage-shell {
 	display: grid;
-	grid-template-rows: minmax(210px, 0.58fr) minmax(136px, 0.42fr);
-	height: clamp(360px, calc(100dvh - 260px), 560px);
+	grid-template-rows: minmax(180px, 0.48fr) minmax(170px, 0.52fr);
+	height: clamp(380px, calc(100dvh - 238px), 590px);
 	min-height: 0;
 	overflow: hidden;
 	border: 1px solid rgba(226, 233, 248, 0.82);
@@ -547,6 +581,13 @@ watch(
 	box-shadow:
 		0 16px 34px rgba(88, 116, 156, 0.08),
 		inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+.assistant-panel.is-wide .assistant-panel__stage-shell {
+	grid-template-columns: minmax(280px, 0.9fr) minmax(340px, 1.1fr);
+	grid-template-rows: minmax(0, 1fr);
+	height: clamp(420px, calc(100dvh - 210px), 640px);
+	background: linear-gradient(90deg, #fafaf8 0%, #fafaf8 48%, #ffffff 48%, #f8fbff 100%);
 }
 
 .assistant-panel__chat-card {
@@ -560,6 +601,12 @@ watch(
 	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
 	min-height: 0;
 	overflow: hidden;
+}
+
+.assistant-panel.is-wide .assistant-panel__chat-card {
+	padding-top: 12px;
+	border-top: none;
+	border-left: 1px solid rgba(220, 229, 246, 0.72);
 }
 
 .assistant-panel__chat-header {
@@ -842,7 +889,7 @@ watch(
 
 .assistant-input {
 	min-width: 0;
-	padding: 12px;
+	padding: 10px 12px;
 	border-radius: 22px;
 	border: 1px solid rgba(221, 230, 247, 0.95);
 	background: linear-gradient(180deg, #ffffff, #f8fbff);
@@ -855,13 +902,13 @@ watch(
 	display: grid;
 	min-width: 0;
 	grid-template-rows: auto 18px;
-	row-gap: 8px;
+	row-gap: 6px;
 }
 
 .assistant-input__field {
 	width: 100%;
-	min-height: 78px;
-	padding: 2px 54px 30px 0;
+	min-height: 56px;
+	padding: 0 54px 26px 0;
 	border: none;
 	resize: none;
 	outline: none;
@@ -1008,6 +1055,10 @@ watch(
 		border-radius: 24px;
 	}
 
+	.assistant-panel.is-wide {
+		width: min(720px, calc(100vw - 24px));
+	}
+
 	.assistant-panel__header {
 		margin-bottom: 10px;
 	}
@@ -1018,9 +1069,15 @@ watch(
 	}
 
 	.assistant-panel__stage-shell {
-		grid-template-rows: minmax(200px, 0.6fr) minmax(118px, 0.4fr);
-		height: clamp(330px, calc(100dvh - 230px), 440px);
+		grid-template-rows: minmax(170px, 0.48fr) minmax(150px, 0.52fr);
+		height: clamp(330px, calc(100dvh - 210px), 470px);
 		border-radius: 20px;
+	}
+
+	.assistant-panel.is-wide .assistant-panel__stage-shell {
+		grid-template-columns: minmax(250px, 0.9fr) minmax(310px, 1.1fr);
+		grid-template-rows: minmax(0, 1fr);
+		height: clamp(330px, calc(100dvh - 196px), 500px);
 	}
 
 	.assistant-panel__chat-card {
@@ -1075,14 +1132,14 @@ watch(
 	}
 
 	.assistant-input {
-		padding: 10px;
+		padding: 8px 10px;
 		border-radius: 18px;
 	}
 
 	.assistant-input__field {
-		min-height: 56px;
+		min-height: 50px;
 		padding-right: 48px;
-		padding-bottom: 28px;
+		padding-bottom: 24px;
 		font-size: 13px;
 	}
 
@@ -1102,6 +1159,20 @@ watch(
 		width: 100%;
 		height: calc(100dvh - 24px);
 		padding: 14px;
+	}
+
+	.assistant-panel.is-wide {
+		width: 100%;
+	}
+
+	.assistant-panel.is-wide .assistant-panel__stage-shell {
+		grid-template-columns: none;
+		grid-template-rows: minmax(180px, 0.48fr) minmax(170px, 0.52fr);
+	}
+
+	.assistant-panel.is-wide .assistant-panel__chat-card {
+		border-left: none;
+		border-top: 1px solid rgba(220, 229, 246, 0.72);
 	}
 
 	.assistant-panel__icon-button {
