@@ -864,8 +864,9 @@ watch(
 	position: relative;
 	grid-column: 2;
 	grid-row: 2;
-	justify-self: center;
-	align-self: center;
+	justify-self: end;
+	align-self: end;
+	top: 5px;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -951,12 +952,13 @@ watch(
 .assistant-input__helper {
 	grid-column: 1;
 	grid-row: 2;
-	align-self: center;
+	align-self: end;
 	width: 100%;
 	min-width: 0;
 	max-width: 100%;
 	min-height: 18px;
 	padding-right: 0;
+	transform: translateY(3px);
 }
 
 .assistant-input__helper-text {
