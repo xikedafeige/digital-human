@@ -1,3 +1,4 @@
+// 数字人主交互 Hook，串联文本问答、语音识别、TTS 队列和面板状态。
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
   buildDemoReply,
@@ -5,13 +6,13 @@ import {
   DIGITAL_HUMAN_SUGGESTIONS,
   RESPONSE_TIMING,
   SYSTEM_WELCOME,
-} from './demo-config'
+} from '@/config/demo-config'
 import type {
   AvatarState,
   DemoMessage,
   SpeechSynthesisResult,
-} from './avatar-types'
-import { markdownToPlainText, type ParsedReplyContent } from './message-content'
+} from '@/types/avatar-types'
+import { markdownToPlainText, type ParsedReplyContent } from '@/utils/message-content'
 import { useDifyChat } from './useDifyChat'
 import { useSpeechRecognition } from './useSpeechRecognition'
 import { useSpeechSynthesis } from './useSpeechSynthesis'
@@ -24,11 +25,14 @@ const SPEECH_SEGMENT_MAX_LOOKAHEAD_CHARS = 40
 const SENTENCE_END_CHARS = '。！？；.!?;'
 const WHITESPACE_RE = /\s/
 
+// 构造外部服务不可用时的本地兜底回复文本。
 const buildFallbackReplyText = (question: string) =>
   `当前服务暂时不可用，先为你提供本地演示回复。\n\n${buildDemoReply(question)}`
 
+// 清理播报文本首尾空白并统一换行符。
 const normalizeSpeechText = (value: string) => value.replace(/\r\n/g, '\n').trim()
 
+// 创建统一的消息对象，补齐时间、来源和渲染模式等默认值。
 const createMessage = (
   role: DemoMessage['role'],
   content: string,
@@ -58,6 +62,7 @@ const createMessage = (
   renderMode: options.renderMode ?? (role === 'user' ? 'plain' : 'markdown'),
 })
 
+// 判断异常是否来自主动中断，避免误报为真实错误。
 const isAbortError = (error: unknown) =>
   error instanceof DOMException && error.name === 'AbortError'
 
@@ -162,9 +167,11 @@ export function useDigitalHumanDemo() {
     () => speechSynthesisClient.isSynthesizing.value,
   )
 
+  // 根据消息 id 获取当前会话中的消息对象。
   const getMessageById = (messageId: string) =>
     messages.value.find((message) => message.id === messageId) ?? null
 
+  // 清理输入区临时提示及其自动消失定时器。
   const clearInputHint = () => {
     if (inputHintTimer !== null) {
       window.clearTimeout(inputHintTimer)
@@ -174,6 +181,7 @@ export function useDigitalHumanDemo() {
     inputHint.value = ''
   }
 
+  // 展示短暂输入提示，用于错误、无识别结果等轻量反馈。
   const showTransientInputHint = (message: string) => {
     clearInputHint()
     inputHint.value = message
@@ -183,11 +191,13 @@ export function useDigitalHumanDemo() {
     }, 3000)
   }
 
+  // 清理中断按钮和等待语音识别结果的流程标记。
   const clearInterruptState = () => {
     showInterruptButton.value = false
     isAwaitingVoiceRecognitionResult.value = false
   }
 
+  // 清理当前播报进度、跟读文本和播放关联消息。
   const clearSpeechProgress = () => {
     activeSpeakingFlowId = 0
     speechPlaybackProgress.value = 0
@@ -201,6 +211,7 @@ export function useDigitalHumanDemo() {
     displayedSpeechText = ''
   }
 
+  // 重置 TTS 队列、播放队列和流式分段游标。
   const resetSpeechQueueState = () => {
     ttsQueue = []
     playbackQueue = []
@@ -215,8 +226,10 @@ export function useDigitalHumanDemo() {
     difyStreamCompleted = false
   }
 
+  // 判断字符是否适合作为语音分段的句末边界。
   const isSentenceEndChar = (value: string) => SENTENCE_END_CHARS.includes(value)
 
+  // 统计非空白字符数量，用于控制 TTS 分段长度。
   const countEffectiveChars = (text: string) => {
     let effectiveChars = 0
 
@@ -229,10 +242,11 @@ export function useDigitalHumanDemo() {
     return effectiveChars
   }
 
+  // 按播放比例估算当前文本下标，用于跟读进度。
   const getTextIndexByRatio = (text: string, ratio: number) =>
     Math.max(0, Math.min(text.length, Math.floor(text.length * ratio)))
 
-  // Find a speech segment end near the target length, preferring sentence boundaries.
+  // 寻找语音分段终点：首段更短，后续优先在目标长度附近按句末标点切分。
   const getSpeechSegmentEndIndex = (
     text: string,
     startIndex: number,
@@ -286,6 +300,7 @@ export function useDigitalHumanDemo() {
     return -1
   }
 
+  // 替换当前播放结果，并释放上一段语音的 blob URL。
   const setSpeechResult = (nextSpeechResult: SpeechSynthesisResult | null) => {
     if (
       speechResult.value &&
@@ -297,11 +312,13 @@ export function useDigitalHumanDemo() {
     speechResult.value = nextSpeechResult
   }
 
+  // 清理本轮流程内登记的所有延迟任务。
   const clearFlowTimers = () => {
     flowTimers.forEach((timer) => window.clearTimeout(timer))
     flowTimers = []
   }
 
+  // 登记可统一清理的延迟任务，避免中断后旧任务继续执行。
   const queueTimeout = (callback: () => void, delay: number) => {
     const timer = window.setTimeout(() => {
       flowTimers = flowTimers.filter((item) => item !== timer)
@@ -311,6 +328,7 @@ export function useDigitalHumanDemo() {
     flowTimers.push(timer)
   }
 
+  // 取消正在进行的 TTS 请求。
   const cancelPendingSpeechSynthesis = () => {
     if (!activeTtsController) {
       return
@@ -320,6 +338,7 @@ export function useDigitalHumanDemo() {
     activeTtsController = null
   }
 
+  // 取消正在进行的 Dify 请求，并通知 Dify 后端停止任务。
   const cancelPendingDify = () => {
     const taskId = activeDifyTaskId
 
@@ -335,6 +354,7 @@ export function useDigitalHumanDemo() {
     }
   }
 
+  // 将所有 pending 消息收口为已完成，避免 UI 长期显示生成中。
   const settlePendingMessages = () => {
     messages.value.forEach((message) => {
       if (message.pending) {
@@ -343,6 +363,7 @@ export function useDigitalHumanDemo() {
     })
   }
 
+  // 根据当前分段播放进度计算整条回复的播报进度。
   const updateSpeechOverallProgress = (segmentProgress = speechPlaybackProgress.value) => {
     if (!activePlaybackItem || totalSpeechEffectiveChars <= 0) {
       speechOverallProgress.value = 0
@@ -363,6 +384,7 @@ export function useDigitalHumanDemo() {
     )
   }
 
+  // 按当前分段播放进度更新用户可见正文。
   const syncVisibleSpeechText = (messageId: string, segmentProgress = 0) => {
     const targetMessage = getMessageById(messageId)
     if (!targetMessage || !activePlaybackItem) {
@@ -386,6 +408,7 @@ export function useDigitalHumanDemo() {
     targetMessage.renderMode = 'markdown'
   }
 
+  // 整轮语音播报完成后恢复最终完整 Markdown 正文。
   const revealFinalAssistantMessage = () => {
     if (!currentAssistantMessageId) {
       return
@@ -401,6 +424,7 @@ export function useDigitalHumanDemo() {
     targetMessage.renderMode = 'markdown'
   }
 
+  // 立即结束当前流程并恢复空闲态。
   const finishFlowNow = (flowId: number) => {
     if (flowId !== activeFlowId) {
       return
@@ -414,6 +438,7 @@ export function useDigitalHumanDemo() {
     clearSpeechProgress()
   }
 
+  // 将 Dify 流式内容同步到 assistant 消息，并维护 think 展开/折叠状态。
   const updateAssistantMessage = (
     messageId: string,
     content: ParsedReplyContent,
@@ -449,6 +474,7 @@ export function useDigitalHumanDemo() {
       : true
   }
 
+  // 检查 Dify、TTS 和播放队列是否全部完成，满足条件时结束整轮流程。
   const finishSpeechQueueIfReady = (flowId: number) => {
     if (flowId !== activeFlowId) {
       return
@@ -466,6 +492,7 @@ export function useDigitalHumanDemo() {
     finishFlowNow(flowId)
   }
 
+  // 启动播放队列中的一段语音，并绑定当前消息和进度状态。
   const startQueuedPlayback = (item: PlaybackQueueItem) => {
     if (item.flowId !== activeFlowId) {
       speechSynthesisClient.revoke(item.speechResult)
@@ -497,6 +524,7 @@ export function useDigitalHumanDemo() {
     return true
   }
 
+  // 串行消费已合成的播放队列，保证音频按文本顺序播放。
   const drainPlaybackQueue = (flowId: number) => {
     if (flowId !== activeFlowId || isPlaybackQueueRunning) {
       return
@@ -522,6 +550,7 @@ export function useDigitalHumanDemo() {
     }
   }
 
+  // 合成一个 TTS 分段，成功后放入播放队列，失败时使用本地模拟语音兜底。
   const synthesizeQueuedSpeech = async (item: TtsQueueItem) => {
     const normalizedSpeechText = normalizeSpeechText(item.text)
     const targetMessage = getMessageById(item.messageId)
@@ -599,6 +628,7 @@ export function useDigitalHumanDemo() {
     drainTtsQueue(item.flowId)
   }
 
+  // 串行消费 TTS 合成队列，但允许 TTS 请求和当前音频播放并行。
   const drainTtsQueue = (flowId: number) => {
     if (flowId !== activeFlowId || isTtsQueueRunning) {
       return
@@ -620,6 +650,7 @@ export function useDigitalHumanDemo() {
     void synthesizeQueuedSpeech(nextItem)
   }
 
+  // 从最新 speechText 中切出新分段并加入 TTS 队列。
   const enqueueSpeechSegments = (
     flowId: number,
     messageId: string,
@@ -706,6 +737,7 @@ export function useDigitalHumanDemo() {
     drainTtsQueue(flowId)
   }
 
+  // Dify 流结束时补齐尾段，并标记后续可在队列清空后结束流程。
   const finalizeSpeechFlow = (
     flowId: number,
     messageId: string,
@@ -726,6 +758,7 @@ export function useDigitalHumanDemo() {
     )
   }
 
+  // 本地兜底回复的打字流式展示，并复用同一套 TTS 分段队列。
   const streamMarkdownReply = (
     flowId: number,
     messageId: string,
@@ -793,6 +826,7 @@ export function useDigitalHumanDemo() {
       tick()
     })
 
+  // 外部 Dify 不可用时运行本地兜底问答流程。
   const runFallbackReplyFlow = async (
     flowId: number,
     question: string,
@@ -845,6 +879,7 @@ export function useDigitalHumanDemo() {
     )
   }
 
+  // 中断时收口当前 assistant 消息，避免留下空白或永久 pending 气泡。
   const settleInterruptedAssistantMessage = () => {
     if (!currentAssistantMessageId) {
       return
@@ -874,6 +909,7 @@ export function useDigitalHumanDemo() {
     targetMessage.pending = false
   }
 
+  // 取消当前完整流程，覆盖 Dify、TTS、播放、录音和 UI 状态。
   const cancelCurrentFlow = () => {
     activeFlowId += 1
     activeVoiceStopId += 1
@@ -891,6 +927,7 @@ export function useDigitalHumanDemo() {
     clearSpeechProgress()
   }
 
+  // 用户点击中断按钮时执行当前流程取消。
   const interruptCurrentFlow = () => {
     if (!showInterruptButton.value && !isAwaitingVoiceRecognitionResult.value) {
       return
@@ -900,6 +937,7 @@ export function useDigitalHumanDemo() {
     cancelCurrentFlow()
   }
 
+  // 发起一轮问答流程：Dify 流式文本、TTS 预合成和播放队列协同执行。
   const runReplyFlow = (question: string, source: DemoMessage['source']) => {
     const assistantMessage = createMessage('assistant', THINKING_PLACEHOLDER, {
       pending: true,
@@ -1046,6 +1084,7 @@ export function useDigitalHumanDemo() {
     })()
   }
 
+  // 发送文本问题，并在忙碌时先中断上一轮流程。
   const sendText = (
     rawText: string,
     source: DemoMessage['source'] = 'text',
@@ -1071,11 +1110,13 @@ export function useDigitalHumanDemo() {
     runReplyFlow(question, source)
   }
 
+  // 提交当前输入框文本。
   const submitInput = () => {
     clearInputHint()
     sendText(inputText.value, 'text')
   }
 
+  // 开始语音输入，进入 listening 状态并启动 ASR。
   const startVoiceInput = async () => {
     if (isRecording.value) {
       return
@@ -1102,6 +1143,7 @@ export function useDigitalHumanDemo() {
     }
   }
 
+  // 停止语音输入，拿到识别结果后自动发起问答。
   const stopVoiceInput = async () => {
     if (!isRecording.value) {
       return
@@ -1139,6 +1181,7 @@ export function useDigitalHumanDemo() {
     showTransientInputHint('未识别到内容，请重试。')
   }
 
+  // 单段语音播放完成后推进播放队列或结束整轮流程。
   const handleSpeechComplete = () => {
     const flowId = activeFlowId
 
@@ -1177,6 +1220,7 @@ export function useDigitalHumanDemo() {
     drainPlaybackQueue(flowId)
   }
 
+  // 接收视频舞台回传的当前段播放进度，并同步整体进度和跟读文本。
   const handleSpeechProgress = (progress: number) => {
     if (status.value !== 'speaking') {
       return
@@ -1195,6 +1239,7 @@ export function useDigitalHumanDemo() {
     }
   }
 
+  // 切换指定消息的思考过程展开状态。
   const toggleThinkVisibility = (messageId: string) => {
     const targetMessage = getMessageById(messageId)
     if (!targetMessage?.thinkContent) {
@@ -1204,15 +1249,18 @@ export function useDigitalHumanDemo() {
     targetMessage.thinkCollapsed = !targetMessage.thinkCollapsed
   }
 
+  // 展开数字人面板。
   const expand = () => {
     isExpanded.value = true
   }
 
+  // 关闭面板并取消当前所有运行中的流程。
   const collapse = () => {
     cancelCurrentFlow()
     isExpanded.value = false
   }
 
+  // 重置会话到欢迎语，同时清理上下文和运行状态。
   const resetToWelcome = () => {
     messages.value = [
       createMessage('system', SYSTEM_WELCOME, {
@@ -1234,6 +1282,7 @@ export function useDigitalHumanDemo() {
     clearSpeechProgress()
   }
 
+  // 新建对话：取消当前流程并回到初始欢迎态。
   const clearConversation = () => {
     cancelCurrentFlow()
     resetToWelcome()

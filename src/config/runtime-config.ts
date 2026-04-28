@@ -1,9 +1,12 @@
+// 数字人运行时配置，统一读取环境变量并提供默认服务地址。
+// 读取字符串环境变量，空值时回退到默认值。
 const readStringEnv = (value: string | undefined, fallback: string) => {
   const normalizedValue = value?.trim()
 
   return normalizedValue ? normalizedValue : fallback
 }
 
+// 读取正数环境变量，非法或非正数时回退到默认值。
 const readNumberEnv = (value: string | undefined, fallback: number) => {
   const parsedValue = Number(value)
 
@@ -12,6 +15,7 @@ const readNumberEnv = (value: string | undefined, fallback: number) => {
     : fallback
 }
 
+// 规范化接口路径，保证最终路径以斜杠开头。
 const normalizePath = (value: string | undefined, fallback: string) => {
   const normalizedValue = readStringEnv(value, fallback)
 
@@ -20,6 +24,7 @@ const normalizePath = (value: string | undefined, fallback: string) => {
     : `/${normalizedValue}`
 }
 
+// 规范化 WebSocket 地址，允许用 http/https 环境变量自动转换。
 const normalizeWebSocketUrl = (value: string | undefined, fallback: string) => {
   const normalizedValue = readStringEnv(value, fallback)
 
@@ -107,6 +112,7 @@ export const DIGITAL_HUMAN_RUNTIME_CONFIG = {
   },
 } as const
 
+// 拼接 TTS 基础域名和接口路径，得到最终请求地址。
 export const buildTtsEndpointUrl = () => {
   const baseUrl = DIGITAL_HUMAN_RUNTIME_CONFIG.ttsBaseUrl.replace(/\/+$/, '')
   const endpoint = DIGITAL_HUMAN_RUNTIME_CONFIG.ttsEndpoint.replace(/^\/+/, '')
@@ -114,6 +120,7 @@ export const buildTtsEndpointUrl = () => {
   return `${baseUrl}/${endpoint}`
 }
 
+// 根据 Dify taskId 生成停止当前回答的接口地址。
 export const buildDifyStopMessageUrl = (taskId: string) =>
   DIGITAL_HUMAN_RUNTIME_CONFIG.difyStopMessageUrlTemplate.replace(
     '{task_id}',

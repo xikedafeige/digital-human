@@ -1,12 +1,14 @@
+// 数字人 Dify 会话 Hook，封装流式问答、SSE 解析和停止任务请求。
 import { ref } from 'vue'
 import {
   buildDifyStopMessageUrl,
   DIGITAL_HUMAN_RUNTIME_CONFIG,
-} from './runtime-config'
-import { parseReplyContent, type ParsedReplyContent } from './message-content'
+} from '@/config/runtime-config'
+import { parseReplyContent, type ParsedReplyContent } from '@/utils/message-content'
 
 const DIFY_USER_STORAGE_KEY = 'digital-human:dify-user'
 
+// 生成标准中断错误，便于上层统一识别主动取消。
 const createAbortError = () =>
   new DOMException('Dify chat aborted', 'AbortError')
 
@@ -53,6 +55,7 @@ export interface DifyChatResult extends ParsedReplyContent {
   messageId: string
 }
 
+// 为当前浏览器会话生成稳定 userId，保证 Dify 会话上下文可连续。
 const buildSessionUserId = () => {
   const prefix = DIGITAL_HUMAN_RUNTIME_CONFIG.difyUserPrefix
 
@@ -78,6 +81,7 @@ const buildSessionUserId = () => {
   }
 }
 
+// 从 SSE buffer 中拆出完整 data 事件，并保留未完成的尾部 buffer。
 const extractSseMessages = (buffer: string) => {
   const normalizedBuffer = buffer.replace(/\r\n/g, '\n')
   const chunks = normalizedBuffer.split('\n\n')
@@ -102,11 +106,13 @@ const extractSseMessages = (buffer: string) => {
   }
 }
 
+// 从多个候选字段中选择第一个可用字符串。
 const pickString = (...values: unknown[]) =>
   values.find(
     (value): value is string => typeof value === 'string' && value.length > 0,
   ) ?? ''
 
+// 兼容 Dify 不同事件结构，提取本次事件携带的文本增量。
 const extractPayloadText = (payload: DifyStreamPayload) => {
   const nested = payload.data ?? {}
   const eventType = typeof payload.event === 'string' ? payload.event : ''
@@ -129,6 +135,7 @@ const extractPayloadText = (payload: DifyStreamPayload) => {
   )
 }
 
+// 合并流式文本，兼容增量片段和全量替换两类返回形式。
 const mergeAccumulatedText = (currentText: string, nextChunk: string) => {
   if (!nextChunk) {
     return currentText
@@ -149,16 +156,19 @@ const mergeAccumulatedText = (currentText: string, nextChunk: string) => {
   return currentText + nextChunk
 }
 
+// 输出 Dify 内容解析结果，方便联调时核对正文和播报文本。
 const logParsedContent = (content: ParsedReplyContent) => {
   console.info('[Dify raw text]', content.rawText)
   console.info('[Dify body text]', content.bodyMarkdown)
   console.info('[Dify final speech text]', content.speechText)
 }
 
+// 提供 Dify 问答运行和停止能力，供数字人主流程组合调用。
 export function useDifyChat() {
   const errorMessage = ref('')
   const isStreaming = ref(false)
 
+  // 发起一次 Dify 问答，并在流式过程中持续回传解析后的内容。
   const run = async (
     question: string,
     options: DifyChatOptions = {},
@@ -276,6 +286,7 @@ export function useDifyChat() {
       const decoder = new TextDecoder()
       let buffer = ''
 
+      // 应用单条 SSE payload，更新会话标识并推送最新文本。
       const applyPayload = (payload: DifyStreamPayload) => {
         console.info('[Dify SSE payload]', payload)
 
@@ -414,6 +425,7 @@ export function useDifyChat() {
     }
   }
 
+  // 请求 Dify 停止指定 task，配合本地中断减少后端继续生成。
   const stop = async (taskId: string) => {
     if (!taskId || !DIGITAL_HUMAN_RUNTIME_CONFIG.difyApiKey) {
       return

@@ -1,3 +1,4 @@
+// 数字人模块通用类型定义，集中描述状态、消息和语音播放结果。
 export type AvatarState = 'idle' | 'listening' | 'thinking' | 'speaking'
 export type MessageRole = 'user' | 'assistant' | 'system'
 export type MessageSource = 'text' | 'voice' | 'system'

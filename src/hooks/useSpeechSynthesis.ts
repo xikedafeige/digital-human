@@ -1,12 +1,15 @@
+// 数字人语音合成 Hook，封装 TTS 请求、音频时长探测和资源释放。
 import { ref } from 'vue'
-import type { SpeechSynthesisResult } from './avatar-types'
-import { RESPONSE_TIMING } from './demo-config'
-import { buildTtsEndpointUrl, DIGITAL_HUMAN_RUNTIME_CONFIG } from './runtime-config'
+import type { SpeechSynthesisResult } from '@/types/avatar-types'
+import { RESPONSE_TIMING } from '@/config/demo-config'
+import { buildTtsEndpointUrl, DIGITAL_HUMAN_RUNTIME_CONFIG } from '@/config/runtime-config'
 
 const AUDIO_METADATA_TIMEOUT_MS = 3500
 
+// 生成标准中断错误，便于上层区分主动取消和真实失败。
 const createAbortError = () => new DOMException('TTS synthesis aborted', 'AbortError')
 
+// 在无法读取音频元数据时，根据文本长度估算播报时长。
 const estimateSpeechDurationMs = (text: string) => {
   const normalizedText = text.trim()
 
@@ -16,6 +19,7 @@ const estimateSpeechDurationMs = (text: string) => {
   )
 }
 
+// 用临时 audio 元素探测真实音频时长，让播报进度更贴近实际音频。
 const probeAudioDurationMs = (audioUrl: string, signal?: AbortSignal) =>
   new Promise<number>((resolve, reject) => {
     const audio = new Audio()
@@ -79,10 +83,12 @@ interface SpeechSynthesisOptions {
   signal?: AbortSignal
 }
 
+// 提供 TTS 合成能力，并负责生成音频 URL 与释放资源。
 export function useSpeechSynthesis() {
   const errorMessage = ref('')
   const isSynthesizing = ref(false)
 
+  // 请求 TTS 服务生成一段语音，返回可直接播放的 SpeechSynthesisResult。
   const synthesize = async (
     text: string,
     options: SpeechSynthesisOptions = {}
@@ -162,6 +168,7 @@ export function useSpeechSynthesis() {
     }
   }
 
+  // 释放 TTS 生成的 blob URL，避免长时间使用后内存泄漏。
   const revoke = (speech: SpeechSynthesisResult | null | undefined) => {
     if (!speech?.audioUrl || !speech.audioUrl.startsWith('blob:')) {
       return

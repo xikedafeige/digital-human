@@ -1,5 +1,6 @@
+// 数字人语音识别 Hook，封装麦克风采集、PCM 转换和 ASR WebSocket 交互。
 import { onBeforeUnmount, ref } from 'vue'
-import { DIGITAL_HUMAN_RUNTIME_CONFIG } from './runtime-config'
+import { DIGITAL_HUMAN_RUNTIME_CONFIG } from '@/config/runtime-config'
 
 const STOP_RESULT_TIMEOUT_MS = 3000
 
@@ -41,6 +42,7 @@ type AudioContextWindow = Window &
     webkitAudioContext?: typeof AudioContext
   }
 
+// 将浏览器采集的 Float32 音频帧转换为 ASR 服务需要的 16-bit PCM。
 const floatTo16BitPCM = (float32Array: Float32Array) => {
   const buffer = new ArrayBuffer(float32Array.length * 2)
   const view = new DataView(buffer)
@@ -54,6 +56,7 @@ const floatTo16BitPCM = (float32Array: Float32Array) => {
   return buffer
 }
 
+// 提供实时语音识别能力，管理麦克风、音频节点和 WebSocket 生命周期。
 export function useSpeechRecognition(options: SpeechRecognitionOptions = {}) {
   const isRecognizing = ref(false)
   const partialText = ref('')
@@ -67,6 +70,7 @@ export function useSpeechRecognition(options: SpeechRecognitionOptions = {}) {
   let resolveStop: ((text: string) => void) | null = null
   let stopTimerId: number | null = null
 
+  // 释放本地音频节点和麦克风设备，避免录音指示器残留。
   const cleanupAudio = async () => {
     if (processor) {
       processor.disconnect()
@@ -86,6 +90,7 @@ export function useSpeechRecognition(options: SpeechRecognitionOptions = {}) {
     }
   }
 
+  // 关闭并解绑 ASR WebSocket，避免旧连接继续回调。
   const cleanupWebSocket = () => {
     if (!ws) {
       return
@@ -102,6 +107,7 @@ export function useSpeechRecognition(options: SpeechRecognitionOptions = {}) {
     ws = null
   }
 
+  // 清理等待最终识别结果的兜底定时器。
   const clearStopTimer = () => {
     if (stopTimerId !== null) {
       window.clearTimeout(stopTimerId)
@@ -109,13 +115,16 @@ export function useSpeechRecognition(options: SpeechRecognitionOptions = {}) {
     }
   }
 
+  // 重置本轮识别的临时文本和最终文本。
   const resetRecognitionText = () => {
     partialText.value = ''
     finalText.value = ''
   }
 
+  // 优先使用最终结果，没有最终结果时退回局部识别文本。
   const getBestRecognizedText = () => finalText.value.trim() || partialText.value.trim()
 
+  // 收口停止录音流程，向调用方返回当前可用识别文本。
   const finishStop = (text = getBestRecognizedText()) => {
     const normalizedText = text.trim()
     clearStopTimer()
@@ -129,6 +138,7 @@ export function useSpeechRecognition(options: SpeechRecognitionOptions = {}) {
     partialText.value = ''
   }
 
+  // 解析 ASR 服务消息，并同步 partial、segment、complete 和 error 状态。
   const handleMessage = (rawData: string) => {
     try {
       const message = JSON.parse(rawData) as RecognitionMessage
@@ -169,6 +179,7 @@ export function useSpeechRecognition(options: SpeechRecognitionOptions = {}) {
     }
   }
 
+  // 启动实时语音识别：建立 ASR 连接并持续发送 PCM 音频帧。
   const start = async () => {
     if (isRecognizing.value) {
       return
@@ -239,6 +250,7 @@ export function useSpeechRecognition(options: SpeechRecognitionOptions = {}) {
     }
   }
 
+  // 主动结束录音，等待服务端返回最终识别文本。
   const stop = async () => {
     if (resolveStop) {
       return new Promise<string>((resolve) => {
@@ -279,6 +291,7 @@ export function useSpeechRecognition(options: SpeechRecognitionOptions = {}) {
     return stopPromise
   }
 
+  // 取消当前识别流程，不向上层返回已识别内容。
   const cancel = async () => {
     clearStopTimer()
     resetRecognitionText()

@@ -3,5 +3,5 @@
 </template>
 
 <script setup lang="ts">
-import DigitalHumanAssistant from './components/digital-human/DigitalHumanAssistant.vue'
+import { DigitalHumanAssistant } from '@/index'
 </script>

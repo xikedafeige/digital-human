@@ -1,5 +1,6 @@
-import type { DemoMessage, SpeechSynthesisResult } from './avatar-types'
-import { DIGITAL_HUMAN_RUNTIME_CONFIG } from './runtime-config'
+// 数字人演示配置，提供快捷建议、欢迎语和本地兜底回复。
+import type { DemoMessage, SpeechSynthesisResult } from '@/types/avatar-types'
+import { DIGITAL_HUMAN_RUNTIME_CONFIG } from '@/config/runtime-config'
 
 export type DigitalHumanStatus = 'idle' | 'listening' | 'thinking' | 'speaking'
 export type { DemoMessage }
@@ -41,6 +42,7 @@ const REPLY_LIBRARY = [
   },
 ]
 
+// 构造本地模拟语音结果，用于 TTS 失败时保持播报流程可继续。
 export const buildMockSpeechResult = (text: string): SpeechSynthesisResult => {
   const normalizedText = text.trim()
   const baseDuration = Math.max(
@@ -57,6 +59,7 @@ export const buildMockSpeechResult = (text: string): SpeechSynthesisResult => {
   }
 }
 
+// 根据关键词生成本地兜底回复，避免外部服务失败时面板无响应。
 export function buildDemoReply(question: string) {
   const normalizedQuestion = question.trim()
 

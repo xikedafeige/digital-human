@@ -1,3 +1,4 @@
+<!-- 数字人面板组件，负责入口 UI、消息展示、输入区和语音交互控制。 -->
 <template>
 	<section class="assistant-demo">
 		<div class="assistant-panel" :class="{ 'is-wide': isWidePanel }">
@@ -162,11 +163,11 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import type { DemoMessage } from './avatar-types'
-import { markdownToPlainText, renderMarkdownToHtml } from './message-content'
-import { useDigitalHumanDemo } from './useDigitalHumanDemo'
+import type { DemoMessage } from '@/types/avatar-types'
+import { markdownToPlainText, renderMarkdownToHtml } from '@/utils/message-content'
+import { useDigitalHumanDemo } from '@/hooks/useDigitalHumanDemo'
 import VideoDigitalHumanStage from './VideoDigitalHumanStage.vue'
-import { VIDEO_STATUS_LABELS } from './video-avatar-config'
+import { VIDEO_STATUS_LABELS } from '@/config/video-avatar-config'
 
 const {
 	clearConversation,
@@ -202,7 +203,10 @@ const isWidePanel = ref(false)
 type ActionButtonMode = 'record' | 'send' | 'stop' | 'interrupt'
 type HelperTone = 'idle' | 'busy' | 'hint'
 
+// 根据当前视频状态展示头部状态文案。
 const statusLabel = computed(() => VIDEO_STATUS_LABELS[status.value])
+
+// 汇总录音、生成、播报和空闲状态下的运行提示。
 const statusHint = computed(() => {
 	if (isRecording.value) {
 		return '录音中，再次点击按钮后将结束录音并开始识别。'
@@ -233,8 +237,10 @@ const roleLabelMap: Record<DemoMessage['role'], string> = {
 	system: '系统',
 }
 
+// 统一渲染 Markdown 消息，保持模板中 v-html 来源可控。
 const renderMessageHtml = (content: string) => renderMarkdownToHtml(content)
 
+// 根据录音、打断和输入内容决定右下角按钮模式。
 const actionButtonMode = computed<ActionButtonMode>(() => {
 	if (isRecording.value) {
 		return 'stop'
@@ -251,6 +257,7 @@ const actionButtonMode = computed<ActionButtonMode>(() => {
 	return 'record'
 })
 
+// 根据按钮模式生成无障碍标签和 tooltip 文案。
 const actionButtonLabel = computed(() => {
 	if (actionButtonMode.value === 'stop') {
 		return '停止录音'
@@ -267,6 +274,7 @@ const actionButtonLabel = computed(() => {
 	return '语音输入'
 })
 
+// 决定输入区 helper 的视觉语气：空闲、忙碌或错误提示。
 const helperTone = computed<HelperTone>(() => {
 	if (inputHint.value) {
 		return 'hint'
@@ -283,6 +291,7 @@ const helperTone = computed<HelperTone>(() => {
 	return 'idle'
 })
 
+// 统一生成输入区左下角提示，避免多个提示节点造成布局跳动。
 const helperText = computed(() => {
 	if (inputHint.value) {
 		return inputHint.value
@@ -305,6 +314,7 @@ const helperText = computed(() => {
 
 const helperTitle = computed(() => helperText.value || '')
 
+// 处理右下角按钮点击，分发到录音、发送、停止或中断动作。
 const handleActionButtonClick = () => {
 	if (actionButtonMode.value === 'stop') {
 		void stopVoiceInput()
@@ -324,6 +334,7 @@ const handleActionButtonClick = () => {
 	void startVoiceInput()
 }
 
+// Enter 直接发送，Shift+Enter 保留换行输入。
 const handleInputKeydown = (event: KeyboardEvent) => {
 	if (event.isComposing) {
 		return
@@ -335,6 +346,7 @@ const handleInputKeydown = (event: KeyboardEvent) => {
 	}
 }
 
+// 格式化消息时间，只展示小时和分钟。
 const formatTime = (timestamp: number) =>
 	new Date(timestamp).toLocaleTimeString('zh-CN', {
 		hour: '2-digit',

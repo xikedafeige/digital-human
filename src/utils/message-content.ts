@@ -1,3 +1,4 @@
+// 数字人消息内容工具，负责 think 分离、Markdown 渲染和纯文本提取。
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
 
@@ -13,10 +14,13 @@ export interface ParsedReplyContent {
   thinkCompleted: boolean
 }
 
+// 统一换行符，避免 SSE 分片中不同平台换行影响解析。
 const normalizeLineEndings = (value: string) => value.replace(/\r\n/g, '\n')
 
+// 清理 Markdown 首尾空白，保留正文内部格式。
 const normalizeMarkdown = (value: string) => normalizeLineEndings(value).trim()
 
+// 识别流式文本末尾可能尚未完整到达的 think 标签片段。
 const getTrailingPartialTagLength = (text: string, candidates: string[]) => {
   let matchedLength = 0
 
@@ -34,6 +38,7 @@ const getTrailingPartialTagLength = (text: string, candidates: string[]) => {
   return matchedLength
 }
 
+// 删除末尾未完整到达的标签片段，避免 UI 暂时显示半截标签。
 const stripTrailingPartialTag = (text: string, candidates: string[]) => {
   const partialLength = getTrailingPartialTagLength(text, candidates)
 
@@ -44,6 +49,7 @@ const stripTrailingPartialTag = (text: string, candidates: string[]) => {
   return text.slice(0, text.length - partialLength)
 }
 
+// 将 Dify 原始回复拆成思考区、正文区和可播报纯文本。
 export const parseReplyContent = (rawText: string): ParsedReplyContent => {
   const normalizedRawText = normalizeLineEndings(rawText)
   const bodyParts: string[] = []
@@ -128,6 +134,7 @@ export const parseReplyContent = (rawText: string): ParsedReplyContent => {
   }
 }
 
+// 将 Markdown 渲染为经过净化的 HTML，供消息气泡安全展示。
 export const renderMarkdownToHtml = (markdown: string) => {
   const normalizedMarkdown = normalizeMarkdown(markdown)
   if (!normalizedMarkdown) {
@@ -143,6 +150,7 @@ export const renderMarkdownToHtml = (markdown: string) => {
   return DOMPurify.sanitize(unsafeHtml)
 }
 
+// 将 Markdown 转成纯文本，供 TTS 和状态摘要使用。
 export const markdownToPlainText = (markdown: string) => {
   const safeHtml = renderMarkdownToHtml(markdown)
   if (!safeHtml) {
