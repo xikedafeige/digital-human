@@ -356,7 +356,7 @@ watch(
 )
 </script>
 
-<style scoped>
+<style scoped lang="less">
 .assistant-demo {
 	position: fixed;
 	inset: 0;

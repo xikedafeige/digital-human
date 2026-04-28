@@ -353,7 +353,7 @@ onBeforeUnmount(() => {
 })
 </script>
 
-<style scoped>
+<style scoped lang="less">
 .video-stage {
   position: relative;
   min-height: 0;
