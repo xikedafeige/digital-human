@@ -487,24 +487,19 @@ watch(
 	border-radius: 12px;
 	color: #5e83ef;
 	background: rgba(96, 133, 239, 0.12);
-	transition:
-		background 0.18s ease,
-		color 0.18s ease,
-		transform 0.18s ease;
 }
 
 .assistant-panel__icon-button:hover {
 	background: rgba(96, 133, 239, 0.18);
 	color: #4267e8;
-	transform: translateY(-1px);
 }
 
 .assistant-panel__icon-button::after {
 	content: attr(data-tooltip);
 	position: absolute;
-	left: 50%;
-	top: calc(100% + 8px);
-	z-index: 5;
+	right: 0;
+	top: calc(100% + 6px);
+	z-index: 30;
 	padding: 5px 8px;
 	border-radius: 8px;
 	background: rgba(34, 43, 60, 0.92);
@@ -514,8 +509,6 @@ watch(
 	white-space: nowrap;
 	opacity: 0;
 	pointer-events: none;
-	transform: translateX(-50%);
-	transition: opacity 0.16s ease;
 }
 
 .assistant-panel__icon-button:hover::after,
