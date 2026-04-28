@@ -11,14 +11,9 @@
 				</div>
 
 				<div class="assistant-panel__actions">
-					<button
-						type="button"
-						class="assistant-panel__icon-button"
-						:aria-label="isWidePanel ? '收起面板' : '展开面板'"
-						:title="isWidePanel ? '收起面板' : '展开面板'"
-						:data-tooltip="isWidePanel ? '收起面板' : '展开面板'"
-						@click="isWidePanel = !isWidePanel"
-					>
+					<button type="button" class="assistant-panel__icon-button" :aria-label="isWidePanel ? '收起面板' : '展开面板'"
+						:title="isWidePanel ? '收起面板' : '展开面板'" :data-tooltip="isWidePanel ? '收起面板' : '展开面板'"
+						@click="isWidePanel = !isWidePanel">
 						<svg v-if="!isWidePanel" viewBox="0 0 24 24" aria-hidden="true">
 							<path d="M8 5H5v3" />
 							<path d="M5 5l5.2 5.2" />
@@ -40,14 +35,8 @@
 							<path d="M4 14l6 6" />
 						</svg>
 					</button>
-					<button
-						type="button"
-						class="assistant-panel__icon-button"
-						aria-label="新建对话"
-						title="新建对话"
-						data-tooltip="新建对话"
-						@click="clearConversation"
-					>
+					<button type="button" class="assistant-panel__icon-button" aria-label="新建对话" title="新建对话" data-tooltip="新建对话"
+						@click="clearConversation">
 						<svg viewBox="0 0 24 24" aria-hidden="true">
 							<path d="M12 5v14" />
 							<path d="M5 12h14" />
@@ -60,79 +49,53 @@
 
 			<div class="assistant-panel__body">
 				<div class="assistant-panel__stage-shell">
-					<VideoDigitalHumanStage
-						:state="status"
-						:speech-result="speechResult"
-						:autoplay-token="speechToken"
-						@speech-complete="handleSpeechComplete"
-						@speech-progress="handleSpeechProgress"
-					/>
+					<VideoDigitalHumanStage :state="status" :speech-result="speechResult" :autoplay-token="speechToken"
+						@speech-complete="handleSpeechComplete" @speech-progress="handleSpeechProgress" />
 
 					<section class="assistant-panel__chat-card">
 						<header class="assistant-panel__chat-header">
 							<div class="assistant-panel__llm-chip">
 								<span class="assistant-panel__llm-dot"></span>
-								<span>Dify 已接入</span>
+								<span>LLM 已接入</span>
 							</div>
 							<p class="assistant-panel__runtime-tip">{{ statusHint }}</p>
 						</header>
 
 						<section ref="messagesRef" class="assistant-messages">
-							<article
-								v-for="message in messages"
-								:key="message.id"
-								class="assistant-message"
-								:class="[
-									`is-${message.role}`,
-									{
-										'is-pending': message.pending,
-										'is-speech-active': message.id === speechPlaybackMessageId,
-									},
-								]"
-							>
+							<article v-for="message in messages" :key="message.id" class="assistant-message" :class="[
+								`is-${message.role}`,
+								{
+									'is-pending': message.pending,
+									'is-speech-active': message.id === speechPlaybackMessageId,
+								},
+							]">
 								<header class="assistant-message__meta">
 									<strong>{{ roleLabelMap[message.role] }}</strong>
 									<time>{{ formatTime(message.timestamp) }}</time>
 								</header>
 
-								<div
-									v-if="message.thinkContent"
-									class="assistant-message__think"
-									:class="{ 'is-collapsed': message.thinkCollapsed }"
-								>
-									<button
-										type="button"
-										class="assistant-message__think-toggle"
-										@click="toggleThinkVisibility(message.id)"
-									>
+								<div v-if="message.thinkContent" class="assistant-message__think"
+									:class="{ 'is-collapsed': message.thinkCollapsed }">
+									<button type="button" class="assistant-message__think-toggle"
+										@click="toggleThinkVisibility(message.id)">
 										<span>思考过程</span>
-										<span
-											class="assistant-message__think-arrow"
-											:class="{ 'is-collapsed': message.thinkCollapsed }"
-											aria-hidden="true"
-										></span>
+										<span class="assistant-message__think-arrow" :class="{ 'is-collapsed': message.thinkCollapsed }"
+											aria-hidden="true"></span>
 									</button>
 
-									<div
-										v-show="!message.thinkCollapsed"
+									<div v-show="!message.thinkCollapsed"
 										class="assistant-message__markdown assistant-message__think-markdown"
-										v-html="renderMessageHtml(message.thinkContent)"
-									></div>
+										v-html="renderMessageHtml(message.thinkContent)"></div>
 								</div>
 
-								<div
-									v-if="message.renderMode === 'markdown' && message.content"
-									class="assistant-message__markdown"
-									v-html="renderMessageHtml(message.content)"
-								></div>
+								<div v-if="message.renderMode === 'markdown' && message.content" class="assistant-message__markdown"
+									v-html="renderMessageHtml(message.content)"></div>
 								<p v-else-if="message.content" class="assistant-message__plain">
 									{{ message.content }}
 								</p>
 
-								<div
-									v-if="message.id === speechPlaybackMessageId && speechFollowText"
-									class="assistant-message__follow"
-								>
+								<div v-if="message.id === speechPlaybackMessageId && speechFollowText"
+									class="assistant-message__follow">
 									<span class="assistant-message__follow-done">
 										{{ speechFollowText.slice(0, speechFollowHighlightIndex) }}
 									</span>
@@ -141,11 +104,8 @@
 									</span>
 								</div>
 
-								<div
-									v-if="message.id === speechPlaybackMessageId"
-									class="assistant-message__speech-progress"
-									aria-hidden="true"
-								>
+								<div v-if="message.id === speechPlaybackMessageId" class="assistant-message__speech-progress"
+									aria-hidden="true">
 									<span :style="{ transform: `scaleX(${speechOverallProgress})` }"></span>
 								</div>
 							</article>
@@ -155,42 +115,22 @@
 
 				<footer class="assistant-input">
 					<section v-if="suggestions.length" class="assistant-suggestions">
-						<button
-							v-for="item in suggestions"
-							:key="item"
-							type="button"
-							class="assistant-suggestions__item"
-							@click="sendText(item)"
-						>
+						<button v-for="item in suggestions" :key="item" type="button" class="assistant-suggestions__item"
+							@click="sendText(item)">
 							{{ item }}
 						</button>
 					</section>
 
 					<div class="assistant-input__field-wrap">
-						<textarea
-							v-model="inputText"
-							class="assistant-input__field"
-							rows="3"
-							placeholder="输入问题..."
-							:disabled="isRecording"
-							@keydown="handleInputKeydown"
-						></textarea>
+						<textarea v-model="inputText" class="assistant-input__field" rows="3" placeholder="输入问题..."
+							:disabled="isRecording" @keydown="handleInputKeydown"></textarea>
 
-						<button
-							type="button"
-							class="assistant-input__voice-icon"
-							:class="{
-								'is-recording': actionButtonMode === 'stop',
-								'is-interrupt': actionButtonMode === 'interrupt',
-							}"
-							:aria-label="actionButtonLabel"
-							:data-tooltip="actionButtonLabel"
-							@click="handleActionButtonClick"
-						>
+						<button type="button" class="assistant-input__voice-icon" :class="{
+							'is-recording': actionButtonMode === 'stop',
+							'is-interrupt': actionButtonMode === 'interrupt',
+						}" :aria-label="actionButtonLabel" :data-tooltip="actionButtonLabel" @click="handleActionButtonClick">
 							<svg v-if="actionButtonMode === 'record'" viewBox="0 0 24 24" aria-hidden="true">
-								<path
-									d="M12 14.5c1.7 0 3-1.3 3-3V6.8c0-1.7-1.3-3-3-3s-3 1.3-3 3v4.7c0 1.7 1.3 3 3 3Z"
-								/>
+								<path d="M12 14.5c1.7 0 3-1.3 3-3V6.8c0-1.7-1.3-3-3-3s-3 1.3-3 3v4.7c0 1.7 1.3 3 3 3Z" />
 								<path d="M6.5 11.2c0 3 2.4 5.5 5.5 5.5s5.5-2.5 5.5-5.5" />
 								<path d="M12 16.7v3.2" />
 								<path d="M9 19.9h6" />
@@ -205,15 +145,11 @@
 						</button>
 
 						<div class="assistant-input__helper" aria-live="polite">
-							<span
-								class="assistant-input__helper-text"
-								:class="{
-									'is-busy': helperTone === 'busy',
-									'is-hint': helperTone === 'hint',
-									'is-empty': !helperText,
-								}"
-								:title="helperTitle"
-							>
+							<span class="assistant-input__helper-text" :class="{
+								'is-busy': helperTone === 'busy',
+								'is-hint': helperTone === 'hint',
+								'is-empty': !helperText,
+							}" :title="helperTitle">
 								{{ helperText || ' ' }}
 							</span>
 						</div>
@@ -563,20 +499,21 @@ watch(
 .assistant-panel__body {
 	flex: 1;
 	display: grid;
-	grid-template-rows: auto auto;
-	gap: 12px;
+	grid-template-rows: minmax(0, 1fr) auto;
+	gap: 9px;
 	min-height: 0;
+	padding-bottom: 2px;
 	overflow: hidden;
 }
 
 .assistant-panel__stage-shell {
 	display: grid;
 	grid-template-rows: minmax(180px, 0.48fr) minmax(170px, 0.52fr);
-	height: clamp(380px, calc(100dvh - 238px), 590px);
+	height: 100%;
 	min-height: 0;
 	overflow: hidden;
 	border: 1px solid rgba(226, 233, 248, 0.82);
-	border-radius: 26px;
+	border-radius: 24px 24px 20px 20px;
 	background: linear-gradient(180deg, #fafaf8 0%, #fafaf8 51%, #ffffff 51%, #f8fbff 100%);
 	box-shadow:
 		0 16px 34px rgba(88, 116, 156, 0.08),
@@ -586,7 +523,7 @@ watch(
 .assistant-panel.is-wide .assistant-panel__stage-shell {
 	grid-template-columns: minmax(280px, 0.9fr) minmax(340px, 1.1fr);
 	grid-template-rows: minmax(0, 1fr);
-	height: clamp(420px, calc(100dvh - 210px), 640px);
+	height: 100%;
 	background: linear-gradient(90deg, #fafaf8 0%, #fafaf8 48%, #ffffff 48%, #f8fbff 100%);
 }
 
@@ -653,6 +590,7 @@ watch(
 
 .assistant-suggestions {
 	position: relative;
+	z-index: 1;
 	display: flex;
 	flex-wrap: nowrap;
 	gap: 7px;
@@ -889,11 +827,11 @@ watch(
 
 .assistant-input {
 	min-width: 0;
-	padding: 10px 12px;
-	border-radius: 22px;
+	padding: 10px 12px 12px;
+	border-radius: 20px 20px 22px 22px;
 	border: 1px solid rgba(221, 230, 247, 0.95);
 	background: linear-gradient(180deg, #ffffff, #f8fbff);
-	box-shadow: 0 -10px 24px rgba(255, 255, 255, 0.92);
+	box-shadow: 0 -4px 14px rgba(214, 226, 246, 0.42);
 	overflow: hidden;
 }
 
@@ -901,14 +839,19 @@ watch(
 	position: relative;
 	display: grid;
 	min-width: 0;
-	grid-template-rows: auto 18px;
+	grid-template-columns: minmax(0, 1fr) 50px;
+	grid-template-rows: auto 38px;
+	column-gap: 10px;
 	row-gap: 6px;
+	align-items: center;
 }
 
 .assistant-input__field {
+	grid-column: 1 / -1;
+	grid-row: 1;
 	width: 100%;
 	min-height: 56px;
-	padding: 0 54px 26px 0;
+	padding: 0;
 	border: none;
 	resize: none;
 	outline: none;
@@ -918,9 +861,11 @@ watch(
 }
 
 .assistant-input__voice-icon {
-	position: absolute;
-	right: 0;
-	bottom: 0;
+	position: relative;
+	grid-column: 2;
+	grid-row: 2;
+	justify-self: center;
+	align-self: center;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -1004,11 +949,14 @@ watch(
 }
 
 .assistant-input__helper {
+	grid-column: 1;
+	grid-row: 2;
+	align-self: center;
 	width: 100%;
 	min-width: 0;
 	max-width: 100%;
 	min-height: 18px;
-	padding-right: 48px;
+	padding-right: 0;
 }
 
 .assistant-input__helper-text {
@@ -1038,6 +986,7 @@ watch(
 }
 
 @keyframes voiceIconPulse {
+
 	0%,
 	100% {
 		transform: scale(1);
@@ -1064,20 +1013,21 @@ watch(
 	}
 
 	.assistant-panel__body {
-		grid-template-rows: auto auto;
-		gap: 10px;
+		grid-template-rows: minmax(0, 1fr) auto;
+		gap: 8px;
+		padding-bottom: 2px;
 	}
 
 	.assistant-panel__stage-shell {
 		grid-template-rows: minmax(170px, 0.48fr) minmax(150px, 0.52fr);
-		height: clamp(330px, calc(100dvh - 210px), 470px);
+		height: 100%;
 		border-radius: 20px;
 	}
 
 	.assistant-panel.is-wide .assistant-panel__stage-shell {
 		grid-template-columns: minmax(250px, 0.9fr) minmax(310px, 1.1fr);
 		grid-template-rows: minmax(0, 1fr);
-		height: clamp(330px, calc(100dvh - 196px), 500px);
+		height: 100%;
 	}
 
 	.assistant-panel__chat-card {
@@ -1132,14 +1082,17 @@ watch(
 	}
 
 	.assistant-input {
-		padding: 8px 10px;
+		padding: 8px 10px 10px;
 		border-radius: 18px;
+	}
+
+	.assistant-input__field-wrap {
+		grid-template-columns: minmax(0, 1fr) 44px;
+		grid-template-rows: auto 34px;
 	}
 
 	.assistant-input__field {
 		min-height: 50px;
-		padding-right: 48px;
-		padding-bottom: 24px;
 		font-size: 13px;
 	}
 
