@@ -500,7 +500,7 @@ watch(
 	flex: 1;
 	display: grid;
 	grid-template-rows: minmax(0, 1fr) auto;
-	gap: 9px;
+	gap: 7px;
 	min-height: 0;
 	padding-bottom: 2px;
 	overflow: hidden;
@@ -512,12 +512,12 @@ watch(
 	height: 100%;
 	min-height: 0;
 	overflow: hidden;
-	border: 1px solid rgba(226, 233, 248, 0.82);
-	border-radius: 24px 24px 20px 20px;
+	border: 1px solid rgba(226, 233, 248, 0.62);
+	border-radius: 22px;
 	background: linear-gradient(180deg, #fafaf8 0%, #fafaf8 51%, #ffffff 51%, #f8fbff 100%);
 	box-shadow:
-		0 16px 34px rgba(88, 116, 156, 0.08),
-		inset 0 1px 0 rgba(255, 255, 255, 0.82);
+		0 6px 14px rgba(88, 116, 156, 0.04),
+		inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
 .assistant-panel.is-wide .assistant-panel__stage-shell {
@@ -828,10 +828,10 @@ watch(
 .assistant-input {
 	min-width: 0;
 	padding: 10px 12px 12px;
-	border-radius: 20px 20px 22px 22px;
-	border: 1px solid rgba(221, 230, 247, 0.95);
+	border-radius: 18px 18px 22px 22px;
+	border: 1px solid rgba(221, 230, 247, 0.72);
 	background: linear-gradient(180deg, #ffffff, #f8fbff);
-	box-shadow: 0 -4px 14px rgba(214, 226, 246, 0.42);
+	box-shadow: 0 -1px 6px rgba(214, 226, 246, 0.22);
 	overflow: hidden;
 }
 
@@ -1014,14 +1014,14 @@ watch(
 
 	.assistant-panel__body {
 		grid-template-rows: minmax(0, 1fr) auto;
-		gap: 8px;
+		gap: 6px;
 		padding-bottom: 2px;
 	}
 
 	.assistant-panel__stage-shell {
 		grid-template-rows: minmax(170px, 0.48fr) minmax(150px, 0.52fr);
 		height: 100%;
-		border-radius: 20px;
+		border-radius: 18px;
 	}
 
 	.assistant-panel.is-wide .assistant-panel__stage-shell {
@@ -1083,7 +1083,7 @@ watch(
 
 	.assistant-input {
 		padding: 8px 10px 10px;
-		border-radius: 18px;
+		border-radius: 16px 16px 18px 18px;
 	}
 
 	.assistant-input__field-wrap {
