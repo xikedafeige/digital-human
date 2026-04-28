@@ -11,8 +11,20 @@
 				</div>
 
 				<div class="assistant-panel__actions">
-					<button type="button" class="assistant-panel__text-button" @click="clearConversation">
-						清空
+					<button
+						type="button"
+						class="assistant-panel__icon-button"
+						aria-label="新建对话"
+						title="新建对话"
+						data-tooltip="新建对话"
+						@click="clearConversation"
+					>
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path d="M12 5v14" />
+							<path d="M5 12h14" />
+							<path d="M5.8 5.8h7.7" />
+							<path d="M5.8 5.8v12.4h12.4v-7.7" />
+						</svg>
 					</button>
 				</div>
 			</header>
@@ -112,19 +124,19 @@
 					</section>
 				</div>
 
-				<section class="assistant-suggestions">
-					<button
-						v-for="item in suggestions"
-						:key="item"
-						type="button"
-						class="assistant-suggestions__item"
-						@click="sendText(item)"
-					>
-						{{ item }}
-					</button>
-				</section>
-
 				<footer class="assistant-input">
+					<section v-if="suggestions.length" class="assistant-suggestions">
+						<button
+							v-for="item in suggestions"
+							:key="item"
+							type="button"
+							class="assistant-suggestions__item"
+							@click="sendText(item)"
+						>
+							{{ item }}
+						</button>
+					</section>
+
 					<div class="assistant-input__field-wrap">
 						<textarea
 							v-model="inputText"
@@ -235,11 +247,11 @@ const statusHint = computed(() => {
 	}
 
 	if (isSpeechSynthesizing.value) {
-		return '语音服务请求中...'
+		return '语音跟读中...'
 	}
 
 	if (status.value === 'speaking') {
-		return '正在播报回复，请稍候。'
+		return '语音跟读中...'
 	}
 
 	if (status.value === 'thinking') {
@@ -311,12 +323,14 @@ const helperText = computed(() => {
 	}
 
 	if (isSpeechSynthesizing.value) {
-		return '语音服务请求中...'
+		return '语音跟读中...'
 	}
 
 	if (isBusy.value || showInterruptButton.value) {
 		return showInterruptButton.value
-			? '可点击右侧按钮中断当前流程'
+			? status.value === 'speaking'
+				? '语音跟读中...'
+				: '可点击右侧按钮中断当前流程'
 			: '发送新问题会中断当前生成和播报'
 	}
 
@@ -460,21 +474,69 @@ watch(
 	gap: 10px;
 }
 
-.assistant-panel__text-button {
+.assistant-panel__icon-button {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 34px;
+	height: 34px;
 	border: none;
 	cursor: pointer;
-	padding: 9px 12px;
-	border-radius: 999px;
+	padding: 0;
+	border-radius: 12px;
 	color: #5e83ef;
 	background: rgba(96, 133, 239, 0.12);
-	font-size: 13px;
-	font-weight: 700;
+	transition:
+		background 0.18s ease,
+		color 0.18s ease,
+		transform 0.18s ease;
+}
+
+.assistant-panel__icon-button:hover {
+	background: rgba(96, 133, 239, 0.18);
+	color: #4267e8;
+	transform: translateY(-1px);
+}
+
+.assistant-panel__icon-button::after {
+	content: attr(data-tooltip);
+	position: absolute;
+	left: 50%;
+	top: calc(100% + 8px);
+	z-index: 5;
+	padding: 5px 8px;
+	border-radius: 8px;
+	background: rgba(34, 43, 60, 0.92);
+	color: #ffffff;
+	font-size: 11px;
+	line-height: 1;
+	white-space: nowrap;
+	opacity: 0;
+	pointer-events: none;
+	transform: translateX(-50%);
+	transition: opacity 0.16s ease;
+}
+
+.assistant-panel__icon-button:hover::after,
+.assistant-panel__icon-button:focus-visible::after {
+	opacity: 1;
+}
+
+.assistant-panel__icon-button svg {
+	width: 18px;
+	height: 18px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.9;
+	stroke-linecap: round;
+	stroke-linejoin: round;
 }
 
 .assistant-panel__body {
 	flex: 1;
 	display: grid;
-	grid-template-rows: auto auto auto;
+	grid-template-rows: auto auto;
 	gap: 12px;
 	min-height: 0;
 	overflow: hidden;
@@ -550,23 +612,44 @@ watch(
 }
 
 .assistant-suggestions {
+	position: relative;
 	display: flex;
-	flex-wrap: wrap;
-	gap: 8px;
-	align-content: flex-start;
-	padding: 2px 0 0;
-	max-height: min(86px, 12dvh);
-	overflow-y: auto;
+	flex-wrap: nowrap;
+	gap: 7px;
+	min-width: 0;
+	margin: -2px -4px 8px 0;
+	padding: 2px 18px 4px 1px;
+	overflow-x: auto;
+	overflow-y: hidden;
+	scrollbar-width: none;
+	white-space: nowrap;
+	mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 18px), transparent 100%);
+}
+
+.assistant-suggestions::-webkit-scrollbar {
+	display: none;
 }
 
 .assistant-suggestions__item {
-	padding: 9px 14px;
-	border: 1px solid rgba(194, 209, 241, 0.92);
+	flex: 0 0 auto;
+	padding: 6px 10px;
+	border: 1px solid rgba(205, 217, 243, 0.88);
 	border-radius: 999px;
-	background: rgba(248, 250, 255, 0.96);
-	color: #52637f;
-	font-size: 13px;
+	background: rgba(244, 248, 255, 0.82);
+	color: #536684;
+	font-size: 12px;
+	line-height: 1.2;
 	cursor: pointer;
+	transition:
+		border-color 0.18s ease,
+		background 0.18s ease,
+		color 0.18s ease;
+}
+
+.assistant-suggestions__item:hover {
+	border-color: rgba(111, 146, 255, 0.58);
+	background: rgba(233, 240, 255, 0.96);
+	color: #4267e8;
 }
 
 .assistant-messages {
@@ -771,6 +854,7 @@ watch(
 	border: 1px solid rgba(221, 230, 247, 0.95);
 	background: linear-gradient(180deg, #ffffff, #f8fbff);
 	box-shadow: 0 -10px 24px rgba(255, 255, 255, 0.92);
+	overflow: hidden;
 }
 
 .assistant-input__field-wrap {
@@ -936,7 +1020,7 @@ watch(
 	}
 
 	.assistant-panel__body {
-		grid-template-rows: auto auto auto;
+		grid-template-rows: auto auto;
 		gap: 10px;
 	}
 
@@ -966,11 +1050,11 @@ watch(
 	}
 
 	.assistant-suggestions {
-		max-height: 46px;
+		margin-bottom: 6px;
 	}
 
 	.assistant-suggestions__item {
-		padding: 7px 11px;
+		padding: 5px 9px;
 		font-size: 12px;
 	}
 
@@ -1027,8 +1111,9 @@ watch(
 		padding: 14px;
 	}
 
-	.assistant-panel__text-button {
-		padding-inline: 10px;
+	.assistant-panel__icon-button {
+		width: 32px;
+		height: 32px;
 	}
 }
 </style>

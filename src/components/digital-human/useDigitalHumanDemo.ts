@@ -17,6 +17,8 @@ import { useSpeechRecognition } from './useSpeechRecognition'
 import { useSpeechSynthesis } from './useSpeechSynthesis'
 
 const THINKING_PLACEHOLDER = '思考中...'
+const LEAD_SPEECH_SEGMENT_EFFECTIVE_CHARS = 40
+const LEAD_SPEECH_SEGMENT_MAX_LOOKAHEAD_CHARS = 20
 const SPEECH_SEGMENT_EFFECTIVE_CHARS = 100
 const SPEECH_SEGMENT_MAX_LOOKAHEAD_CHARS = 40
 const SENTENCE_END_CHARS = '。！？；.!?;'
@@ -236,6 +238,13 @@ export function useDigitalHumanDemo() {
     startIndex: number,
     includeTail = false,
   ) => {
+    const isLeadSegment = speechSegmentSequence === 0 && startIndex === 0
+    const targetEffectiveChars = isLeadSegment
+      ? LEAD_SPEECH_SEGMENT_EFFECTIVE_CHARS
+      : SPEECH_SEGMENT_EFFECTIVE_CHARS
+    const maxLookaheadEffectiveChars = isLeadSegment
+      ? LEAD_SPEECH_SEGMENT_MAX_LOOKAHEAD_CHARS
+      : SPEECH_SEGMENT_MAX_LOOKAHEAD_CHARS
     let effectiveChars = 0
     let targetEndIndex = -1
     let lookaheadEffectiveChars = 0
@@ -248,7 +257,7 @@ export function useDigitalHumanDemo() {
       effectiveChars += 1
 
       if (targetEndIndex === -1) {
-        if (effectiveChars >= SPEECH_SEGMENT_EFFECTIVE_CHARS) {
+        if (effectiveChars >= targetEffectiveChars) {
           targetEndIndex = index + 1
 
           if (isSentenceEndChar(text[index])) {
@@ -265,7 +274,7 @@ export function useDigitalHumanDemo() {
         return index + 1
       }
 
-      if (lookaheadEffectiveChars >= SPEECH_SEGMENT_MAX_LOOKAHEAD_CHARS) {
+      if (lookaheadEffectiveChars >= maxLookaheadEffectiveChars) {
         return index + 1
       }
     }
