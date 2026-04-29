@@ -9,9 +9,15 @@ import {
 } from '@/config/demo-config'
 import type {
   AvatarState,
+  ConversationHistory,
   DemoMessage,
   SpeechSynthesisResult,
 } from '@/types/avatar-types'
+import {
+  deleteConversationHistoryById,
+  loadConversationHistories,
+  upsertConversationHistory,
+} from '@/utils/conversation-history'
 import { markdownToPlainText, type ParsedReplyContent } from '@/utils/message-content'
 import { useDifyChat } from './useDifyChat'
 import { useSpeechRecognition } from './useSpeechRecognition'
@@ -166,6 +172,11 @@ export function useDigitalHumanDemo() {
   const speechCompletedMessageIds = ref<string[]>([])
   const speechLoadingMessageId = ref('')
   const conversationId = ref('')
+  const conversationHistories = ref<ConversationHistory[]>(
+    loadConversationHistories(),
+  )
+  const currentHistoryId = ref('')
+  const isHistoryPanelOpen = ref(false)
 
   const suggestions = computed(() => DIGITAL_HUMAN_SUGGESTIONS)
   const hasInput = computed(() => inputText.value.trim().length > 0)
@@ -251,6 +262,46 @@ export function useDigitalHumanDemo() {
   // 根据消息 id 获取当前会话中的消息对象。
   const getMessageById = (messageId: string) =>
     messages.value.find((message) => message.id === messageId) ?? null
+
+  // 只有包含用户问题的对话才进入历史，避免欢迎语单独占用记录。
+  const hasPersistableMessages = () =>
+    messages.value.some((message) => message.role === 'user')
+
+  // 将当前消息列表和 Dify 上下文写入本地历史；写入失败时保留当前内存列表。
+  const persistCurrentConversation = () => {
+    if (!hasPersistableMessages()) {
+      return
+    }
+
+    const result = upsertConversationHistory(conversationHistories.value, {
+      historyId: currentHistoryId.value,
+      difyConversationId: conversationId.value,
+      messages: messages.value,
+    })
+
+    currentHistoryId.value = result.history.id
+
+    if (result.didSave) {
+      conversationHistories.value = result.histories
+      return
+    }
+
+    const existingHistoryIndex = conversationHistories.value.findIndex(
+      (history) => history.id === result.history.id,
+    )
+
+    if (existingHistoryIndex === -1) {
+      conversationHistories.value = [
+        result.history,
+        ...conversationHistories.value,
+      ]
+      return
+    }
+
+    conversationHistories.value = conversationHistories.value.map((history) =>
+      history.id === result.history.id ? result.history : history,
+    )
+  }
 
   // 清理输入区临时提示及其自动消失定时器。
   const clearInputHint = () => {
@@ -444,6 +495,8 @@ export function useDigitalHumanDemo() {
         message.pending = false
       }
     })
+
+    persistCurrentConversation()
   }
 
   // 根据当前分段播放进度计算整条回复的播报进度。
@@ -505,6 +558,7 @@ export function useDigitalHumanDemo() {
     targetMessage.content = latestBodyMarkdown || displayedSpeechText
     targetMessage.pending = false
     targetMessage.renderMode = 'markdown'
+    persistCurrentConversation()
   }
 
   // 立即结束当前流程并恢复空闲态。
@@ -1008,12 +1062,24 @@ export function useDigitalHumanDemo() {
     targetMessage.pending = false
   }
 
-  // 取消当前完整流程，覆盖 Dify、TTS、播放、录音和 UI 状态。
-  const cancelCurrentFlow = () => {
+  // 取消当前完整流程，覆盖 Dify、TTS、播放、录音和 UI 状态；部分内部重置场景会跳过历史写入。
+  const cancelCurrentFlow = (options: { persistHistory?: boolean } = {}) => {
+    const shouldPersistHistory = options.persistHistory ?? true
+
     activeFlowId += 1
     activeVoiceStopId += 1
     clearFlowTimers()
-    settlePendingMessages()
+
+    if (shouldPersistHistory) {
+      settlePendingMessages()
+    } else {
+      messages.value.forEach((message) => {
+        if (message.pending) {
+          message.pending = false
+        }
+      })
+    }
+
     cancelPendingDify()
     cancelPendingSpeechSynthesis()
     resetSpeechQueueState()
@@ -1103,6 +1169,7 @@ export function useDigitalHumanDemo() {
             }
 
             conversationId.value = nextConversationId
+            persistCurrentConversation()
 
             const targetMessage = getMessageById(assistantMessageId)
             if (targetMessage) {
@@ -1139,6 +1206,7 @@ export function useDigitalHumanDemo() {
         }
 
         conversationId.value = result.conversationId || conversationId.value
+        persistCurrentConversation()
 
         if (!result.bodyMarkdown || !result.speechText) {
           await runFallbackReplyFlow(flowId, question, assistantMessageId)
@@ -1150,6 +1218,7 @@ export function useDigitalHumanDemo() {
           engine: 'dify',
           conversationId: conversationId.value,
         })
+        persistCurrentConversation()
 
         finalizeSpeechFlow(
           flowId,
@@ -1192,6 +1261,7 @@ export function useDigitalHumanDemo() {
             targetMessage.pending = false
             targetMessage.engine = 'dify'
           }
+          persistCurrentConversation()
 
           finalizeSpeechFlow(
             flowId,
@@ -1203,6 +1273,7 @@ export function useDigitalHumanDemo() {
         }
 
         await runFallbackReplyFlow(flowId, question, assistantMessageId)
+        persistCurrentConversation()
       }
     })()
   }
@@ -1229,6 +1300,7 @@ export function useDigitalHumanDemo() {
         renderMode: 'plain',
       }),
     )
+    persistCurrentConversation()
     inputText.value = ''
     runReplyFlow(question, source)
   }
@@ -1470,6 +1542,7 @@ export function useDigitalHumanDemo() {
     isRecording.value = false
     status.value = 'idle'
     conversationId.value = ''
+    currentHistoryId.value = ''
     speechCompletedMessageIds.value = []
     speechLoadingMessageId.value = ''
     cancelPendingDify()
@@ -1482,10 +1555,61 @@ export function useDigitalHumanDemo() {
     clearSpeechProgress()
   }
 
-  // 新建对话：取消当前流程并回到初始欢迎态。
+  // 新建对话：先保存当前有效对话，再只清空当前视图和上下文，不删除历史列表。
   const clearConversation = () => {
-    cancelCurrentFlow()
+    persistCurrentConversation()
+    cancelCurrentFlow({ persistHistory: false })
     resetToWelcome()
+    isHistoryPanelOpen.value = false
+  }
+
+  // 打开或关闭历史对话浮层。
+  const toggleHistoryPanel = () => {
+    isHistoryPanelOpen.value = !isHistoryPanelOpen.value
+  }
+
+  // 从本地历史恢复消息和 Dify conversationId；加载历史只恢复视图，不回写当前会话。
+  const loadConversationHistory = (historyId: string) => {
+    const targetHistory = conversationHistories.value.find(
+      (history) => history.id === historyId,
+    )
+
+    if (!targetHistory) {
+      return
+    }
+
+    // 跳过历史写入，避免点击历史项时把当前会话额外保存成新记录。
+    cancelCurrentFlow({ persistHistory: false })
+    messages.value = targetHistory.messages.map((message) => ({
+      ...message,
+      pending: false,
+      thinkCollapsed: message.thinkCollapsed ?? true,
+    }))
+    conversationId.value = targetHistory.difyConversationId ?? ''
+    currentHistoryId.value = targetHistory.id
+    inputText.value = ''
+    speechCompletedMessageIds.value = targetHistory.messages
+      .filter(
+        (message) =>
+          message.role === 'assistant' && Boolean(message.content.trim()),
+      )
+      .map((message) => message.id)
+    speechLoadingMessageId.value = ''
+    isHistoryPanelOpen.value = false
+    status.value = 'idle'
+  }
+
+  // 删除单条历史；如果删除的是当前会话，则回到欢迎态。
+  const deleteConversationHistory = (historyId: string) => {
+    conversationHistories.value = deleteConversationHistoryById(
+      conversationHistories.value,
+      historyId,
+    )
+
+    if (currentHistoryId.value === historyId) {
+      cancelCurrentFlow({ persistHistory: false })
+      resetToWelcome()
+    }
   }
 
   onBeforeUnmount(() => {
@@ -1509,6 +1633,9 @@ export function useDigitalHumanDemo() {
   return {
     clearConversation,
     collapse,
+    conversationHistories,
+    currentHistoryId,
+    deleteConversationHistory,
     expand,
     handleSpeechComplete,
     handleSpeechProgress,
@@ -1518,9 +1645,11 @@ export function useDigitalHumanDemo() {
     interruptCurrentFlow,
     isBusy,
     isExpanded,
+    isHistoryPanelOpen,
     isRecording,
     isSpeechSynthesizing,
     latestAssistantText,
+    loadConversationHistory,
     messages,
     readMessageAloud,
     regenerateAssistantMessage,
@@ -1540,6 +1669,7 @@ export function useDigitalHumanDemo() {
     stopVoiceInput,
     submitInput,
     suggestions,
+    toggleHistoryPanel,
     toggleThinkVisibility,
   }
 }

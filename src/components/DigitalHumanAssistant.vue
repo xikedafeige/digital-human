@@ -12,6 +12,23 @@
 				</div>
 
 				<div class="assistant-panel__actions">
+					<button type="button" class="assistant-panel__icon-button" :class="{ 'is-active': isHistoryPanelOpen }"
+						aria-label="历史对话" title="历史对话" data-tooltip="历史对话" @click="toggleHistoryPanel">
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path d="M3.5 12a8.5 8.5 0 1 0 2.4-5.9" />
+							<path d="M3.5 5.5v4h4" />
+							<path d="M12 7.5v5l3.2 1.9" />
+						</svg>
+					</button>
+					<button type="button" class="assistant-panel__icon-button" aria-label="新建对话" title="新建对话" data-tooltip="新建对话"
+						@click="clearConversation">
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path d="M12 5v14" />
+							<path d="M5 12h14" />
+							<path d="M5.8 5.8h7.7" />
+							<path d="M5.8 5.8v12.4h12.4v-7.7" />
+						</svg>
+					</button>
 					<button type="button" class="assistant-panel__icon-button" :aria-label="isWidePanel ? '收起面板' : '展开面板'"
 						:title="isWidePanel ? '收起面板' : '展开面板'" :data-tooltip="isWidePanel ? '收起面板' : '展开面板'"
 						@click="isWidePanel = !isWidePanel">
@@ -36,17 +53,49 @@
 							<path d="M4 14l6 6" />
 						</svg>
 					</button>
-					<button type="button" class="assistant-panel__icon-button" aria-label="新建对话" title="新建对话" data-tooltip="新建对话"
-						@click="clearConversation">
-						<svg viewBox="0 0 24 24" aria-hidden="true">
-							<path d="M12 5v14" />
-							<path d="M5 12h14" />
-							<path d="M5.8 5.8h7.7" />
-							<path d="M5.8 5.8v12.4h12.4v-7.7" />
-						</svg>
-					</button>
 				</div>
 			</header>
+
+			<section v-if="isHistoryPanelOpen" class="assistant-history-panel" aria-label="历史对话">
+				<header class="assistant-history-panel__header">
+					<div>
+						<strong>历史对话</strong>
+						<span>{{ conversationHistories.length }} 条记录</span>
+					</div>
+					<button type="button" class="assistant-history-panel__close" aria-label="关闭历史对话" @click="toggleHistoryPanel">
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path d="M6 6l12 12" />
+							<path d="M18 6L6 18" />
+						</svg>
+					</button>
+				</header>
+
+				<div v-if="conversationHistories.length" class="assistant-history-panel__list">
+					<article v-for="history in conversationHistories" :key="history.id" class="assistant-history-item"
+						:class="{ 'is-active': history.id === currentHistoryId }">
+						<button type="button" class="assistant-history-item__main" @click="loadConversationHistory(history.id)">
+							<strong>{{ history.title }}</strong>
+							<span>{{ formatHistoryTime(history.updatedAt) }} · {{ getHistoryMessageCount(history.messages) }} 条消息</span>
+						</button>
+						<button type="button" class="assistant-history-item__delete" aria-label="删除历史对话" title="删除"
+							@click.stop="deleteConversationHistory(history.id)">
+							<svg viewBox="0 0 24 24" aria-hidden="true">
+								<path d="M4 7h16" />
+								<path d="M9 7V5h6v2" />
+								<path d="M7 7l1 13h8l1-13" />
+								<path d="M10 11v5" />
+								<path d="M14 11v5" />
+							</svg>
+						</button>
+					</article>
+				</div>
+
+				<div v-else class="assistant-history-panel__empty">
+					<span></span>
+					<strong>暂无历史对话</strong>
+					<p>发送问题后会自动保存到这里。</p>
+				</div>
+			</section>
 
 			<div class="assistant-panel__body">
 				<div class="assistant-panel__stage-shell">
@@ -224,7 +273,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import type { DemoMessage } from '@/types/avatar-types'
+import type { ConversationHistory, DemoMessage } from '@/types/avatar-types'
 import { markdownToPlainText, renderMarkdownToHtml } from '@/utils/message-content'
 import { useDigitalHumanDemo } from '@/hooks/useDigitalHumanDemo'
 import VideoDigitalHumanStage from './VideoDigitalHumanStage.vue'
@@ -232,6 +281,9 @@ import { VIDEO_STATUS_LABELS } from '@/config/video-avatar-config'
 
 const {
 	clearConversation,
+	conversationHistories,
+	currentHistoryId,
+	deleteConversationHistory,
 	handleSpeechComplete,
 	handleSpeechProgress,
 	hasInput,
@@ -239,8 +291,10 @@ const {
 	inputText,
 	interruptCurrentFlow,
 	isBusy,
+	isHistoryPanelOpen,
 	isRecording,
 	isSpeechSynthesizing,
+	loadConversationHistory,
 	messages,
 	readMessageAloud,
 	regenerateAssistantMessage,
@@ -259,6 +313,7 @@ const {
 	stopVoiceInput,
 	submitInput,
 	suggestions,
+	toggleHistoryPanel,
 	toggleThinkVisibility,
 } = useDigitalHumanDemo()
 
@@ -543,6 +598,29 @@ const formatTime = (timestamp: number) =>
 		minute: '2-digit',
 	})
 
+// 历史列表使用更紧凑的日期展示，今天只显示时间，非今天显示月日。
+const formatHistoryTime = (timestamp: number) => {
+	const date = new Date(timestamp)
+	const today = new Date()
+	const isToday = date.toDateString() === today.toDateString()
+
+	if (isToday) {
+		return date.toLocaleTimeString('zh-CN', {
+			hour: '2-digit',
+			minute: '2-digit',
+		})
+	}
+
+	return date.toLocaleDateString('zh-CN', {
+		month: '2-digit',
+		day: '2-digit',
+	})
+}
+
+// 统计历史中真正参与对话的用户和 assistant 消息数量。
+const getHistoryMessageCount = (messages: ConversationHistory['messages']) =>
+	messages.filter((message) => message.role !== 'system').length
+
 const scrollMessagesToBottom = () => {
 	const messagesElement = messagesRef.value
 	if (!messagesElement) {
@@ -595,6 +673,7 @@ onBeforeUnmount(() => {
 }
 
 .assistant-panel {
+	position: relative;
 	width: min(520px, calc(100vw - 32px));
 	height: calc(100dvh - 24px);
 	max-height: calc(100dvh - 24px);
@@ -691,6 +770,12 @@ onBeforeUnmount(() => {
 	color: #4267e8;
 }
 
+.assistant-panel__icon-button.is-active {
+	background: rgba(79, 120, 255, 0.18);
+	color: #4267e8;
+	box-shadow: inset 0 0 0 1px rgba(79, 120, 255, 0.18);
+}
+
 .assistant-panel__icon-button::after {
 	content: attr(data-tooltip);
 	position: absolute;
@@ -721,6 +806,207 @@ onBeforeUnmount(() => {
 	stroke-width: 1.9;
 	stroke-linecap: round;
 	stroke-linejoin: round;
+}
+
+.assistant-history-panel {
+	position: absolute;
+	top: 62px;
+	right: 16px;
+	bottom: 14px;
+	z-index: 35;
+	display: grid;
+	grid-template-rows: auto minmax(0, 1fr);
+	width: min(326px, calc(100% - 32px));
+	padding: 12px;
+	border: 1px solid rgba(216, 228, 248, 0.92);
+	border-radius: 20px;
+	background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.98));
+	box-shadow: 0 22px 56px rgba(70, 101, 150, 0.18);
+	backdrop-filter: blur(16px);
+	overflow: hidden;
+}
+
+.assistant-history-panel__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 2px 2px 10px;
+	border-bottom: 1px solid rgba(223, 232, 248, 0.76);
+}
+
+.assistant-history-panel__header strong {
+	display: block;
+	color: #233352;
+	font-size: 14px;
+	line-height: 1.2;
+}
+
+.assistant-history-panel__header span {
+	display: block;
+	margin-top: 2px;
+	color: #7786a0;
+	font-size: 12px;
+	line-height: 1.2;
+}
+
+.assistant-history-panel__close {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	width: 30px;
+	height: 30px;
+	padding: 0;
+	border: none;
+	border-radius: 10px;
+	background: rgba(96, 133, 239, 0.1);
+	color: #5e83ef;
+	cursor: pointer;
+}
+
+.assistant-history-panel__close:hover {
+	background: rgba(96, 133, 239, 0.16);
+	color: #4267e8;
+}
+
+.assistant-history-panel__close svg {
+	width: 16px;
+	height: 16px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 2;
+	stroke-linecap: round;
+}
+
+.assistant-history-panel__list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	min-height: 0;
+	padding: 10px 2px 2px;
+	overflow-y: auto;
+}
+
+.assistant-history-item {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 30px;
+	align-items: center;
+	gap: 8px;
+	padding: 9px;
+	border: 1px solid rgba(216, 227, 247, 0.88);
+	border-radius: 14px;
+	background: rgba(248, 251, 255, 0.9);
+	transition:
+		border-color 0.18s ease,
+		background 0.18s ease,
+		box-shadow 0.18s ease;
+}
+
+.assistant-history-item:hover,
+.assistant-history-item.is-active {
+	border-color: rgba(111, 146, 255, 0.46);
+	background: rgba(240, 246, 255, 0.96);
+	box-shadow: 0 8px 18px rgba(79, 120, 255, 0.08);
+}
+
+.assistant-history-item__main {
+	min-width: 0;
+	padding: 0;
+	border: none;
+	background: transparent;
+	text-align: left;
+	cursor: pointer;
+}
+
+.assistant-history-item__main strong {
+	display: block;
+	max-width: 100%;
+	color: #263852;
+	font-size: 13px;
+	line-height: 1.35;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.assistant-history-item__main span {
+	display: block;
+	margin-top: 3px;
+	color: #7b8ba6;
+	font-size: 11px;
+	line-height: 1.25;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.assistant-history-item.is-active .assistant-history-item__main strong {
+	color: #4267e8;
+}
+
+.assistant-history-item__delete {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 30px;
+	height: 30px;
+	padding: 0;
+	border: 1px solid transparent;
+	border-radius: 10px;
+	background: transparent;
+	color: #8a98b0;
+	cursor: pointer;
+}
+
+.assistant-history-item__delete:hover,
+.assistant-history-item__delete:focus-visible {
+	border-color: rgba(111, 146, 255, 0.24);
+	background: rgba(79, 120, 255, 0.09);
+	color: #4267e8;
+}
+
+.assistant-history-item__delete svg {
+	width: 15px;
+	height: 15px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.8;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.assistant-history-panel__empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	min-height: 0;
+	padding: 28px 16px;
+	color: #7b8ba6;
+	text-align: center;
+}
+
+.assistant-history-panel__empty span {
+	width: 34px;
+	height: 34px;
+	margin-bottom: 10px;
+	border-radius: 50%;
+	background: rgba(79, 120, 255, 0.12);
+	box-shadow: inset 0 0 0 1px rgba(79, 120, 255, 0.14);
+}
+
+.assistant-history-panel__empty strong {
+	color: #40536f;
+	font-size: 13px;
+	line-height: 1.3;
+}
+
+.assistant-history-panel__empty p {
+	margin: 4px 0 0;
+	font-size: 12px;
+	line-height: 1.4;
 }
 
 .assistant-panel__body {
@@ -1515,6 +1801,14 @@ onBeforeUnmount(() => {
 	.assistant-panel__icon-button {
 		width: 32px;
 		height: 32px;
+	}
+
+	.assistant-history-panel {
+		top: 58px;
+		right: 14px;
+		bottom: 14px;
+		width: calc(100% - 28px);
+		border-radius: 18px;
 	}
 }
 </style>

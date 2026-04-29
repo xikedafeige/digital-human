@@ -19,6 +19,15 @@ export interface DemoMessage {
   renderMode?: 'plain' | 'markdown'
 }
 
+export interface ConversationHistory {
+  id: string
+  difyConversationId?: string
+  title: string
+  messages: DemoMessage[]
+  createdAt: number
+  updatedAt: number
+}
+
 export interface SpeechViseme {
   startMs: number
   endMs: number
