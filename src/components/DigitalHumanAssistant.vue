@@ -80,7 +80,7 @@
 								<div v-if="message.thinkContent" class="assistant-message__think"
 									:class="{ 'is-collapsed': message.thinkCollapsed }">
 									<button type="button" class="assistant-message__think-toggle"
-										@click="toggleThinkVisibility(message.id)">
+										@click="handleThinkToggle(message.id)">
 										<span>思考过程</span>
 										<span class="assistant-message__think-arrow" :class="{ 'is-collapsed': message.thinkCollapsed }"
 											aria-hidden="true"></span>
@@ -96,6 +96,53 @@
 								<p v-else-if="message.content" class="assistant-message__plain">
 									{{ message.content }}
 								</p>
+
+								<div v-if="canShowMessageActions(message)" class="assistant-message__actions" aria-label="消息操作">
+									<button type="button" class="assistant-message__action-button"
+										:class="{ 'is-active': copiedMessageId === message.id }"
+										:aria-label="copiedMessageId === message.id ? '已复制' : '复制'" :title="copiedMessageId === message.id ? '已复制' : '复制'"
+										@click="copyMessageContent(message)">
+										<svg viewBox="0 0 24 24" aria-hidden="true">
+											<rect x="8" y="8" width="10" height="12" rx="2" />
+											<path d="M6 16H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
+										</svg>
+									</button>
+									<button type="button" class="assistant-message__action-button" aria-label="重新生成" title="重新生成"
+										@click="handleRegenerateMessage(message.id)">
+										<svg viewBox="0 0 24 24" aria-hidden="true">
+											<path d="M21 12a9 9 0 0 1-15.3 6.4" />
+											<path d="M3 12A9 9 0 0 1 18.3 5.6" />
+											<path d="M18 2v4h-4" />
+											<path d="M6 22v-4h4" />
+										</svg>
+									</button>
+									<button type="button" class="assistant-message__action-button" aria-label="语音朗读" title="语音朗读"
+										@click="readMessageAloud(message.id)">
+										<svg viewBox="0 0 24 24" aria-hidden="true">
+											<path d="M4 10v4h4l5 4V6l-5 4H4Z" />
+											<path d="M16 9.5a4 4 0 0 1 0 5" />
+											<path d="M18.5 7a7 7 0 0 1 0 10" />
+										</svg>
+									</button>
+									<button type="button" class="assistant-message__action-button"
+										:class="{ 'is-active': messageFeedbackMap[message.id] === 'like' }" aria-label="喜欢" title="喜欢"
+										@click="setMessageFeedback(message.id, 'like')">
+										<svg viewBox="0 0 24 24" aria-hidden="true">
+											<path d="M7 10v10" />
+											<path d="M11 9l1-5a2 2 0 0 1 3.9.8L15 10h4a2 2 0 0 1 2 2.3l-1 6a2 2 0 0 1-2 1.7H7" />
+											<path d="M3 10h4v10H3z" />
+										</svg>
+									</button>
+									<button type="button" class="assistant-message__action-button"
+										:class="{ 'is-active': messageFeedbackMap[message.id] === 'dislike' }" aria-label="不喜欢" title="不喜欢"
+										@click="setMessageFeedback(message.id, 'dislike')">
+										<svg viewBox="0 0 24 24" aria-hidden="true">
+											<path d="M17 14V4" />
+											<path d="M13 15l-1 5a2 2 0 0 1-3.9-.8L9 14H5a2 2 0 0 1-2-2.3l1-6A2 2 0 0 1 6 4h11" />
+											<path d="M17 4h4v10h-4z" />
+										</svg>
+									</button>
+								</div>
 
 								<div v-if="message.id === speechPlaybackMessageId && speechFollowText"
 									class="assistant-message__follow">
@@ -164,9 +211,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import type { DemoMessage } from '@/types/avatar-types'
-import { renderMarkdownToHtml } from '@/utils/message-content'
+import { markdownToPlainText, renderMarkdownToHtml } from '@/utils/message-content'
 import { useDigitalHumanDemo } from '@/hooks/useDigitalHumanDemo'
 import VideoDigitalHumanStage from './VideoDigitalHumanStage.vue'
 import { VIDEO_STATUS_LABELS } from '@/config/video-avatar-config'
@@ -183,6 +230,8 @@ const {
 	isRecording,
 	isSpeechSynthesizing,
 	messages,
+	readMessageAloud,
+	regenerateAssistantMessage,
 	sendText,
 	showInterruptButton,
 	speechResult,
@@ -201,8 +250,13 @@ const {
 
 const messagesRef = ref<HTMLElement | null>(null)
 const isWidePanel = ref(false)
+const shouldSkipNextMessageAutoScroll = ref(false)
+const copiedMessageId = ref('')
+const messageFeedbackMap = ref<Record<string, MessageFeedback | undefined>>({})
 type ActionButtonMode = 'record' | 'send' | 'stop' | 'interrupt'
 type HelperTone = 'idle' | 'busy' | 'hint'
+type MessageFeedback = 'like' | 'dislike'
+let copiedMessageTimer: number | null = null
 const IDLE_RUNTIME_TIP = '你好，我是数字人小助，很高兴为您服务！'
 
 // 根据当前视频状态展示头部状态文案。
@@ -241,6 +295,73 @@ const roleLabelMap: Record<DemoMessage['role'], string> = {
 
 // 统一渲染 Markdown 消息，保持模板中 v-html 来源可控。
 const renderMessageHtml = (content: string) => renderMarkdownToHtml(content)
+
+const getMessagePlainText = (message: DemoMessage) =>
+	markdownToPlainText(message.content) || message.content
+
+const canShowMessageActions = (message: DemoMessage) =>
+	message.role === 'assistant' && !message.pending && Boolean(message.content.trim())
+
+const markMessageCopied = (messageId: string) => {
+	copiedMessageId.value = messageId
+
+	if (copiedMessageTimer !== null) {
+		window.clearTimeout(copiedMessageTimer)
+	}
+
+	copiedMessageTimer = window.setTimeout(() => {
+		copiedMessageTimer = null
+		if (copiedMessageId.value === messageId) {
+			copiedMessageId.value = ''
+		}
+	}, 1600)
+}
+
+const fallbackCopyText = (text: string) => {
+	const textarea = document.createElement('textarea')
+	textarea.value = text
+	textarea.setAttribute('readonly', '')
+	textarea.style.position = 'fixed'
+	textarea.style.left = '-9999px'
+	document.body.appendChild(textarea)
+	textarea.select()
+
+	try {
+		document.execCommand('copy')
+	} finally {
+		document.body.removeChild(textarea)
+	}
+}
+
+const copyMessageContent = async (message: DemoMessage) => {
+	const plainText = getMessagePlainText(message).trim()
+	if (!plainText) {
+		return
+	}
+
+	try {
+		if (navigator.clipboard?.writeText) {
+			await navigator.clipboard.writeText(plainText)
+		} else {
+			fallbackCopyText(plainText)
+		}
+
+		markMessageCopied(message.id)
+	} catch {
+		fallbackCopyText(plainText)
+		markMessageCopied(message.id)
+	}
+}
+
+const handleRegenerateMessage = (messageId: string) => {
+	delete messageFeedbackMap.value[messageId]
+	regenerateAssistantMessage(messageId)
+}
+
+const setMessageFeedback = (messageId: string, feedback: MessageFeedback) => {
+	messageFeedbackMap.value[messageId] =
+		messageFeedbackMap.value[messageId] === feedback ? undefined : feedback
+}
 
 // 根据录音、打断和输入内容决定右下角按钮模式。
 const actionButtonMode = computed<ActionButtonMode>(() => {
@@ -355,19 +476,40 @@ const formatTime = (timestamp: number) =>
 		minute: '2-digit',
 	})
 
+const scrollMessagesToBottom = () => {
+	const messagesElement = messagesRef.value
+	if (!messagesElement) {
+		return
+	}
+
+	messagesElement.scrollTop = messagesElement.scrollHeight
+}
+
+const handleThinkToggle = (messageId: string) => {
+	shouldSkipNextMessageAutoScroll.value = true
+	toggleThinkVisibility(messageId)
+}
+
 watch(
 	messages,
 	() => {
-		nextTick(() => {
-			if (!messagesRef.value) {
-				return
-			}
+		if (shouldSkipNextMessageAutoScroll.value) {
+			shouldSkipNextMessageAutoScroll.value = false
+			return
+		}
 
-			messagesRef.value.scrollTop = messagesRef.value.scrollHeight
+		nextTick(() => {
+			scrollMessagesToBottom()
 		})
 	},
 	{ deep: true },
 )
+
+onBeforeUnmount(() => {
+	if (copiedMessageTimer !== null) {
+		window.clearTimeout(copiedMessageTimer)
+	}
+})
 </script>
 
 <style scoped lang="less">
@@ -803,6 +945,50 @@ watch(
 	padding: 0 12px 12px;
 	color: #5b6c88;
 	font-size: 13px;
+}
+
+.assistant-message__actions {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	margin-top: 8px;
+	color: #7c8aa5;
+}
+
+.assistant-message__action-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: 1px solid transparent;
+	border-radius: 8px;
+	background: transparent;
+	color: inherit;
+	cursor: pointer;
+	transition:
+		background 0.18s ease,
+		border-color 0.18s ease,
+		color 0.18s ease;
+}
+
+.assistant-message__action-button:hover,
+.assistant-message__action-button:focus-visible,
+.assistant-message__action-button.is-active {
+	border-color: rgba(111, 146, 255, 0.24);
+	background: rgba(79, 120, 255, 0.09);
+	color: #4267e8;
+}
+
+.assistant-message__action-button svg {
+	width: 16px;
+	height: 16px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.8;
+	stroke-linecap: round;
+	stroke-linejoin: round;
 }
 
 .assistant-message__follow {

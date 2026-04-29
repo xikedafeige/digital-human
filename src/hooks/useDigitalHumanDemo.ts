@@ -122,6 +122,7 @@ interface TtsQueueItem {
   startEffectiveChar: number
   endEffectiveChar: number
   engine: DemoMessage['engine']
+  updateMessageContent?: boolean
 }
 
 interface PlaybackQueueItem {
@@ -134,6 +135,11 @@ interface PlaybackQueueItem {
   startEffectiveChar: number
   endEffectiveChar: number
   engine: DemoMessage['engine']
+  updateMessageContent?: boolean
+}
+
+interface ReplyFlowOptions {
+  reuseMessageId?: string
 }
 
 export function useDigitalHumanDemo() {
@@ -551,10 +557,12 @@ export function useDigitalHumanDemo() {
       return false
     }
 
-    currentMessage.pending = !difyStreamCompleted
-    currentMessage.engine = item.engine
-    currentMessage.conversationId =
-      conversationId.value || currentMessage.conversationId
+    if (item.updateMessageContent !== false) {
+      currentMessage.pending = !difyStreamCompleted
+      currentMessage.engine = item.engine
+      currentMessage.conversationId =
+        conversationId.value || currentMessage.conversationId
+    }
 
     activeSpeakingFlowId = item.flowId
     activePlaybackItem = item
@@ -562,7 +570,9 @@ export function useDigitalHumanDemo() {
     speechPlaybackMessageId.value = item.messageId
     speechFollowText.value = item.speechResult.text
     speechFollowHighlightIndex.value = 0
-    syncVisibleSpeechText(item.messageId, 0)
+    if (item.updateMessageContent !== false) {
+      syncVisibleSpeechText(item.messageId, 0)
+    }
     updateSpeechOverallProgress(0)
     setSpeechResult(item.speechResult)
     speechToken.value += 1
@@ -667,6 +677,7 @@ export function useDigitalHumanDemo() {
       startEffectiveChar: item.startEffectiveChar,
       endEffectiveChar: item.endEffectiveChar,
       engine: item.engine,
+      updateMessageContent: item.updateMessageContent,
     })
     playbackQueue.sort((left, right) => left.sequence - right.sequence)
     isTtsQueueRunning = false
@@ -703,6 +714,7 @@ export function useDigitalHumanDemo() {
     speechText: string,
     engine: DemoMessage['engine'],
     includeTail = false,
+    updateMessageContent = true,
   ) => {
     if (flowId !== activeFlowId) {
       return
@@ -751,6 +763,7 @@ export function useDigitalHumanDemo() {
           startEffectiveChar: queuedSpeechEffectiveChars,
           endEffectiveChar: queuedSpeechEffectiveChars + segmentEffectiveChars,
           engine,
+          updateMessageContent,
         })
         queuedSpeechEffectiveChars += segmentEffectiveChars
       }
@@ -775,6 +788,7 @@ export function useDigitalHumanDemo() {
           startEffectiveChar: queuedSpeechEffectiveChars,
           endEffectiveChar: queuedSpeechEffectiveChars + tailEffectiveChars,
           engine,
+          updateMessageContent,
         })
         queuedSpeechEffectiveChars += tailEffectiveChars
       }
@@ -984,14 +998,24 @@ export function useDigitalHumanDemo() {
   }
 
   // 发起一轮问答流程：Dify 流式文本、TTS 预合成和播放队列协同执行。
-  const runReplyFlow = (question: string, source: DemoMessage['source']) => {
-    const assistantMessage = createMessage('assistant', THINKING_PLACEHOLDER, {
-      pending: true,
-      source,
-      engine: 'dify',
-      renderMode: 'markdown',
-      thinkCollapsed: true,
-    })
+  const runReplyFlow = (
+    question: string,
+    source: DemoMessage['source'],
+    options: ReplyFlowOptions = {},
+  ) => {
+    const reusableMessage = options.reuseMessageId
+      ? getMessageById(options.reuseMessageId)
+      : null
+    const assistantMessage =
+      reusableMessage?.role === 'assistant'
+        ? reusableMessage
+        : createMessage('assistant', THINKING_PLACEHOLDER, {
+            pending: true,
+            source,
+            engine: 'dify',
+            renderMode: 'markdown',
+            thinkCollapsed: true,
+          })
     const flowId = activeFlowId + 1
 
     activeFlowId = flowId
@@ -999,7 +1023,19 @@ export function useDigitalHumanDemo() {
     clearSpeechProgress()
     currentAssistantMessageId = assistantMessage.id
     setSpeechResult(null)
-    messages.value.push(assistantMessage)
+
+    if (reusableMessage?.role === 'assistant') {
+      assistantMessage.content = THINKING_PLACEHOLDER
+      assistantMessage.pending = true
+      assistantMessage.source = source
+      assistantMessage.engine = 'dify'
+      assistantMessage.thinkContent = ''
+      assistantMessage.thinkCollapsed = true
+      assistantMessage.renderMode = 'markdown'
+    } else {
+      messages.value.push(assistantMessage)
+    }
+
     status.value = 'thinking'
     showInterruptButton.value = true
 
@@ -1240,13 +1276,15 @@ export function useDigitalHumanDemo() {
     setSpeechResult(null)
     if (activePlaybackItem) {
       completedSpeechEffectiveChars = activePlaybackItem.endEffectiveChar
-      displayedSpeechText = streamSpeechText
-        .slice(0, activePlaybackItem.endIndex)
-        .trim()
+      if (activePlaybackItem.updateMessageContent !== false) {
+        displayedSpeechText = streamSpeechText
+          .slice(0, activePlaybackItem.endIndex)
+          .trim()
 
-      const currentMessage = getMessageById(activePlaybackItem.messageId)
-      if (currentMessage) {
-        currentMessage.content = displayedSpeechText
+        const currentMessage = getMessageById(activePlaybackItem.messageId)
+        if (currentMessage) {
+          currentMessage.content = displayedSpeechText
+        }
       }
     }
     activeSpeakingFlowId = 0
@@ -1280,8 +1318,9 @@ export function useDigitalHumanDemo() {
     )
     updateSpeechOverallProgress(nextProgress)
 
-    if (activePlaybackItem) {
-      syncVisibleSpeechText(activePlaybackItem.messageId, nextProgress)
+    const playbackItem = activePlaybackItem
+    if (playbackItem && playbackItem.updateMessageContent !== false) {
+      syncVisibleSpeechText(playbackItem.messageId, nextProgress)
     }
   }
 
@@ -1293,6 +1332,73 @@ export function useDigitalHumanDemo() {
     }
 
     targetMessage.thinkCollapsed = !targetMessage.thinkCollapsed
+  }
+
+  const regenerateAssistantMessage = (messageId: string) => {
+    const messageIndex = messages.value.findIndex((message) => message.id === messageId)
+    const targetMessage = messages.value[messageIndex]
+
+    if (messageIndex === -1 || targetMessage?.role !== 'assistant') {
+      return
+    }
+
+    const sourceMessage = [...messages.value.slice(0, messageIndex)]
+      .reverse()
+      .find((message) => message.role === 'user' && message.content.trim())
+
+    if (!sourceMessage) {
+      showTransientInputHint('未找到可重新生成的问题')
+      return
+    }
+
+    if (isBusy.value || isRecording.value || isAwaitingVoiceRecognitionResult.value) {
+      cancelCurrentFlow()
+    }
+
+    clearInputHint()
+    isExpanded.value = true
+    runReplyFlow(
+      sourceMessage.content,
+      sourceMessage.source === 'voice' ? 'voice' : 'text',
+      { reuseMessageId: messageId },
+    )
+  }
+
+  const readMessageAloud = (messageId: string) => {
+    const targetMessage = getMessageById(messageId)
+    const speechText = targetMessage
+      ? normalizeSpeechText(markdownToPlainText(targetMessage.content) || targetMessage.content)
+      : ''
+
+    if (!targetMessage || targetMessage.role !== 'assistant' || !speechText) {
+      return
+    }
+
+    if (isBusy.value || isRecording.value || isAwaitingVoiceRecognitionResult.value) {
+      cancelCurrentFlow()
+    } else {
+      cancelPendingSpeechSynthesis()
+      resetSpeechQueueState()
+      clearSpeechProgress()
+      setSpeechResult(null)
+    }
+
+    const flowId = activeFlowId + 1
+    activeFlowId = flowId
+    currentAssistantMessageId = messageId
+    latestBodyMarkdown = targetMessage.content
+    difyStreamCompleted = true
+    status.value = 'thinking'
+    showInterruptButton.value = true
+
+    enqueueSpeechSegments(
+      flowId,
+      messageId,
+      speechText,
+      targetMessage.engine ?? 'dify',
+      true,
+      false,
+    )
   }
 
   // 展开数字人面板。
@@ -1368,6 +1474,8 @@ export function useDigitalHumanDemo() {
     isSpeechSynthesizing,
     latestAssistantText,
     messages,
+    readMessageAloud,
+    regenerateAssistantMessage,
     sendText,
     showInterruptButton,
     speechResult,
