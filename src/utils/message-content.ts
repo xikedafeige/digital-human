@@ -4,6 +4,10 @@ import { marked } from 'marked'
 
 const THINK_OPEN_TAG = '<think>'
 const THINK_CLOSE_TAG = '</think>'
+const TABLE_DELIMITER_LINE_PATTERN =
+  /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/
+const TABLE_ROW_LINE_PATTERN = /^\s*\|.+\|.*$/
+const FENCE_LINE_PATTERN = /^\s*(`{3,}|~{3,})/
 
 export interface ParsedReplyContent {
   rawText: string
@@ -19,6 +23,118 @@ const normalizeLineEndings = (value: string) => value.replace(/\r\n/g, '\n')
 
 // 清理 Markdown 首尾空白，保留正文内部格式。
 const normalizeMarkdown = (value: string) => normalizeLineEndings(value).trim()
+
+const isTableDelimiterLine = (line: string) =>
+  TABLE_DELIMITER_LINE_PATTERN.test(line)
+
+const isTableRowLine = (line: string) => TABLE_ROW_LINE_PATTERN.test(line)
+
+const splitEmbeddedTableHeader = (line: string) => {
+  const firstPipeIndex = line.indexOf('|')
+
+  if (firstPipeIndex <= 0) {
+    return null
+  }
+
+  const prefix = line.slice(0, firstPipeIndex)
+  const tableLine = line.slice(firstPipeIndex)
+
+  if (!prefix.trim() || !isTableRowLine(tableLine)) {
+    return null
+  }
+
+  return {
+    prefix: prefix.trimEnd(),
+    tableLine: tableLine.trimStart(),
+  }
+}
+
+const pushBlankLineBeforeBlock = (lines: string[]) => {
+  if (lines.length > 0 && lines[lines.length - 1].trim()) {
+    lines.push('')
+  }
+}
+
+const pushBlankLineAfterBlock = (lines: string[], nextLine?: string) => {
+  if (nextLine !== undefined && nextLine.trim()) {
+    lines.push('')
+  }
+}
+
+const wrapMarkdownTables = (html: string) =>
+  html
+    .replace(/<table>/g, '<div class="markdown-table-scroll"><table>')
+    .replace(/<\/table>/g, '</table></div>')
+
+// 修正 Dify 偶发的表格换行不规范输出，让 marked 稳定识别 GFM 表格。
+const normalizeMarkdownTables = (markdown: string) => {
+  const lines = normalizeLineEndings(markdown).split('\n')
+  const normalizedLines: string[] = []
+  let insideFence = false
+  let fenceMarker = ''
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]
+    const fenceMatch = line.match(FENCE_LINE_PATTERN)
+
+    if (fenceMatch) {
+      const marker = fenceMatch[1][0]
+
+      if (!insideFence) {
+        insideFence = true
+        fenceMarker = marker
+      } else if (marker === fenceMarker) {
+        insideFence = false
+        fenceMarker = ''
+      }
+
+      normalizedLines.push(line)
+      continue
+    }
+
+    if (insideFence) {
+      normalizedLines.push(line)
+      continue
+    }
+
+    const nextLine = lines[index + 1]
+    if (nextLine !== undefined && isTableDelimiterLine(nextLine)) {
+      const splitHeader = splitEmbeddedTableHeader(line)
+      const tableHeaderLine = splitHeader?.tableLine ?? line
+
+      if (splitHeader) {
+        normalizedLines.push(splitHeader.prefix)
+      }
+
+      if (isTableRowLine(tableHeaderLine)) {
+        pushBlankLineBeforeBlock(normalizedLines)
+        normalizedLines.push(tableHeaderLine, nextLine)
+        index += 1
+
+        while (
+          index + 1 < lines.length &&
+          !insideFence &&
+          isTableRowLine(lines[index + 1])
+        ) {
+          normalizedLines.push(lines[index + 1])
+          index += 1
+        }
+
+        pushBlankLineAfterBlock(normalizedLines, lines[index + 1])
+        continue
+      }
+
+      if (splitHeader) {
+        normalizedLines.push(tableHeaderLine)
+        continue
+      }
+    }
+
+    normalizedLines.push(line)
+  }
+
+  return normalizedLines.join('\n')
+}
 
 // 识别流式文本末尾可能尚未完整到达的 think 标签片段。
 const getTrailingPartialTagLength = (text: string, candidates: string[]) => {
@@ -141,13 +257,15 @@ export const renderMarkdownToHtml = (markdown: string) => {
     return ''
   }
 
-  const unsafeHtml = marked.parse(normalizedMarkdown, {
+  const renderableMarkdown = normalizeMarkdownTables(normalizedMarkdown)
+
+  const unsafeHtml = marked.parse(renderableMarkdown, {
     async: false,
     breaks: true,
     gfm: true,
   }) as string
 
-  return DOMPurify.sanitize(unsafeHtml)
+  return DOMPurify.sanitize(wrapMarkdownTables(unsafeHtml))
 }
 
 // 将 Markdown 转成纯文本，供 TTS 和状态摘要使用。

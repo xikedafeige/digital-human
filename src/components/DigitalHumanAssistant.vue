@@ -972,6 +972,54 @@ onBeforeUnmount(() => {
 	background: transparent;
 }
 
+.assistant-message__markdown :deep(.markdown-table-scroll) {
+	max-width: 100%;
+	margin: 0 0 8px;
+	overflow-x: auto;
+	overflow-y: hidden;
+}
+
+.assistant-message__markdown :deep(.markdown-table-scroll table) {
+	width: max-content;
+	min-width: 100%;
+	margin: 0;
+	border-collapse: collapse;
+	border: 1px solid rgba(197, 210, 235, 0.9);
+	background: rgba(255, 255, 255, 0.72);
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.assistant-message__markdown :deep(th),
+.assistant-message__markdown :deep(td) {
+	padding: 7px 9px;
+	border: 1px solid rgba(197, 210, 235, 0.9);
+	text-align: left;
+	vertical-align: top;
+	white-space: nowrap;
+}
+
+.assistant-message__markdown :deep(th) {
+	background: rgba(79, 120, 255, 0.08);
+	color: #40536f;
+	font-weight: 700;
+}
+
+.assistant-message.is-user .assistant-message__markdown :deep(.markdown-table-scroll table) {
+	border-color: rgba(255, 255, 255, 0.36);
+	background: rgba(255, 255, 255, 0.1);
+}
+
+.assistant-message.is-user .assistant-message__markdown :deep(th),
+.assistant-message.is-user .assistant-message__markdown :deep(td) {
+	border-color: rgba(255, 255, 255, 0.36);
+}
+
+.assistant-message.is-user .assistant-message__markdown :deep(th) {
+	background: rgba(255, 255, 255, 0.16);
+	color: inherit;
+}
+
 .assistant-message__think {
 	margin-bottom: 10px;
 	border-radius: 14px;
