@@ -18,11 +18,12 @@ import { useSpeechRecognition } from './useSpeechRecognition'
 import { useSpeechSynthesis } from './useSpeechSynthesis'
 
 const THINKING_PLACEHOLDER = '思考中...'
-const LEAD_SPEECH_SEGMENT_EFFECTIVE_CHARS = 40
-const LEAD_SPEECH_SEGMENT_MAX_LOOKAHEAD_CHARS = 20
+const LEAD_SPEECH_SEGMENT_EFFECTIVE_CHARS = 24
+const LEAD_SPEECH_SEGMENT_MAX_LOOKAHEAD_CHARS = 12
 const SPEECH_SEGMENT_EFFECTIVE_CHARS = 100
 const SPEECH_SEGMENT_MAX_LOOKAHEAD_CHARS = 40
 const SENTENCE_END_CHARS = '。！？；.!?;'
+const SPEECH_PAUSE_END_CHARS = `${SENTENCE_END_CHARS}，,、：:`
 const WHITESPACE_RE = /\s/
 
 // 构造外部服务不可用时的本地兜底回复文本。
@@ -30,7 +31,52 @@ const buildFallbackReplyText = (question: string) =>
   `当前服务暂时不可用，先为你提供本地演示回复。\n\n${buildDemoReply(question)}`
 
 // 清理播报文本首尾空白并统一换行符。
-const normalizeSpeechText = (value: string) => value.replace(/\r\n/g, '\n').trim()
+const appendSpeechPause = (text: string, pauseMark: '，' | '。') => {
+  const trimmedText = text.replace(/[ \t]+$/g, '')
+  const lastChar = trimmedText.charAt(trimmedText.length - 1)
+
+  if (!lastChar || SPEECH_PAUSE_END_CHARS.includes(lastChar)) {
+    return trimmedText
+  }
+
+  return `${trimmedText}${pauseMark}`
+}
+
+const normalizeSpeechText = (value: string) => {
+  const normalizedText = value
+    .replace(/\r\n/g, '\n')
+    .replace(/\*{2,}/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+
+  if (!normalizedText) {
+    return ''
+  }
+
+  return normalizedText
+    .split(/(\n{2,}|\n)/)
+    .map((part, index, parts) => {
+      if (part.startsWith('\n')) {
+        return part
+      }
+
+      const nextPart = parts[index + 1] ?? ''
+      if (nextPart.startsWith('\n\n')) {
+        return appendSpeechPause(part, '。')
+      }
+
+      if (nextPart === '\n') {
+        return appendSpeechPause(part, '，')
+      }
+
+      return part.replace(/[ \t]+$/g, '')
+    })
+    .join('')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim()
+}
 
 // 创建统一的消息对象，补齐时间、来源和渲染模式等默认值。
 const createMessage = (

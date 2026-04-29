@@ -59,7 +59,9 @@
 								<span class="assistant-panel__llm-dot"></span>
 								<span>LLM 已接入</span>
 							</div>
-							<p class="assistant-panel__runtime-tip">{{ statusHint }}</p>
+							<div class="assistant-panel__runtime-tip">
+								<span>{{ statusHint }}</span>
+							</div>
 						</header>
 
 						<section ref="messagesRef" class="assistant-messages">
@@ -164,7 +166,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import type { DemoMessage } from '@/types/avatar-types'
-import { markdownToPlainText, renderMarkdownToHtml } from '@/utils/message-content'
+import { renderMarkdownToHtml } from '@/utils/message-content'
 import { useDigitalHumanDemo } from '@/hooks/useDigitalHumanDemo'
 import VideoDigitalHumanStage from './VideoDigitalHumanStage.vue'
 import { VIDEO_STATUS_LABELS } from '@/config/video-avatar-config'
@@ -180,7 +182,6 @@ const {
 	isBusy,
 	isRecording,
 	isSpeechSynthesizing,
-	latestAssistantText,
 	messages,
 	sendText,
 	showInterruptButton,
@@ -202,6 +203,7 @@ const messagesRef = ref<HTMLElement | null>(null)
 const isWidePanel = ref(false)
 type ActionButtonMode = 'record' | 'send' | 'stop' | 'interrupt'
 type HelperTone = 'idle' | 'busy' | 'hint'
+const IDLE_RUNTIME_TIP = '你好，我是数字人小助，很高兴为您服务！'
 
 // 根据当前视频状态展示头部状态文案。
 const statusLabel = computed(() => VIDEO_STATUS_LABELS[status.value])
@@ -228,7 +230,7 @@ const statusHint = computed(() => {
 		return '思考中...'
 	}
 
-	return markdownToPlainText(latestAssistantText.value) || latestAssistantText.value
+	return IDLE_RUNTIME_TIP
 })
 
 const roleLabelMap: Record<DemoMessage['role'], string> = {
@@ -590,11 +592,17 @@ watch(
 }
 
 .assistant-panel__runtime-tip {
+	position: relative;
+	flex: 1 1 auto;
 	min-width: 0;
 	margin: 0;
 	color: #60718e;
 	font-size: 12px;
 	line-height: 1.4;
+}
+
+.assistant-panel__runtime-tip span {
+	display: block;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;

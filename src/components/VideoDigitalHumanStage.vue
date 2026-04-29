@@ -182,10 +182,6 @@ const startSpeechPlayback = async (speech: SpeechSynthesisResult) => {
   stopSpeechPlayback()
   const sessionId = playbackSessionId
 
-  speechTimerId = window.setTimeout(() => {
-    finishSpeechPlayback(sessionId)
-  }, speech.durationMs + (speech.audioUrl ? 240 : 900))
-
   if (speech.audioUrl) {
     const audio = new Audio(speech.audioUrl)
     activeAudio = audio
@@ -197,11 +193,17 @@ const startSpeechPlayback = async (speech: SpeechSynthesisResult) => {
     try {
       await audio.play()
     } catch {
-      // If autoplay is blocked, the timer fallback still keeps the speaking state consistent.
+      speechTimerId = window.setTimeout(() => {
+        finishSpeechPlayback(sessionId)
+      }, speech.durationMs + 900)
     }
 
     return
   }
+
+  speechTimerId = window.setTimeout(() => {
+    finishSpeechPlayback(sessionId)
+  }, speech.durationMs + 900)
 
   if (typeof window === 'undefined' || !('speechSynthesis' in window) || !speech.text.trim()) {
     return
