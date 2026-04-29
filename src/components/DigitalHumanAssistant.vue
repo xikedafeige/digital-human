@@ -79,8 +79,7 @@
 
 								<div v-if="message.thinkContent" class="assistant-message__think"
 									:class="{ 'is-collapsed': message.thinkCollapsed }">
-									<button type="button" class="assistant-message__think-toggle"
-										@click="handleThinkToggle(message.id)">
+									<button type="button" class="assistant-message__think-toggle" @click="handleThinkToggle(message.id)">
 										<span>思考过程</span>
 										<span class="assistant-message__think-arrow" :class="{ 'is-collapsed': message.thinkCollapsed }"
 											aria-hidden="true"></span>
@@ -91,6 +90,11 @@
 										v-html="renderMessageHtml(message.thinkContent)"></div>
 								</div>
 
+								<div v-if="speechLoadingMessageId === message.id" class="assistant-message__speech-loading">
+									<span></span>
+									语音加载中...
+								</div>
+
 								<div v-if="message.renderMode === 'markdown' && message.content" class="assistant-message__markdown"
 									v-html="renderMessageHtml(message.content)"></div>
 								<p v-else-if="message.content" class="assistant-message__plain">
@@ -99,16 +103,21 @@
 
 								<div v-if="canShowMessageActions(message)" class="assistant-message__actions" aria-label="消息操作">
 									<button type="button" class="assistant-message__action-button"
-										:class="{ 'is-active': copiedMessageId === message.id }"
-										:aria-label="copiedMessageId === message.id ? '已复制' : '复制'" :title="copiedMessageId === message.id ? '已复制' : '复制'"
-										@click="copyMessageContent(message)">
-										<svg viewBox="0 0 24 24" aria-hidden="true">
+										:class="{ 'is-active': copiedMessageId === message.id || messageActionStateMap[message.id] === 'copy' }"
+										:aria-label="copiedMessageId === message.id ? '已复制' : '复制'"
+										:data-tooltip="copiedMessageId === message.id ? '已复制' : '复制'"
+										:disabled="isMessageActionBusy(message.id)" @click="copyMessageContent(message)">
+										<svg v-if="copiedMessageId === message.id" viewBox="0 0 24 24" aria-hidden="true">
+											<path d="M20 6 9 17l-5-5" />
+										</svg>
+										<svg v-else viewBox="0 0 24 24" aria-hidden="true">
 											<rect x="8" y="8" width="10" height="12" rx="2" />
 											<path d="M6 16H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
 										</svg>
 									</button>
-									<button type="button" class="assistant-message__action-button" aria-label="重新生成" title="重新生成"
-										@click="handleRegenerateMessage(message.id)">
+									<button type="button" class="assistant-message__action-button" aria-label="重新生成"
+										data-tooltip="重新生成" :class="{ 'is-active': messageActionStateMap[message.id] === 'regenerate' }"
+										:disabled="isMessageActionBusy(message.id)" @click="handleRegenerateMessage(message.id)">
 										<svg viewBox="0 0 24 24" aria-hidden="true">
 											<path d="M21 12a9 9 0 0 1-15.3 6.4" />
 											<path d="M3 12A9 9 0 0 1 18.3 5.6" />
@@ -116,16 +125,18 @@
 											<path d="M6 22v-4h4" />
 										</svg>
 									</button>
-									<button type="button" class="assistant-message__action-button" aria-label="语音朗读" title="语音朗读"
-										@click="readMessageAloud(message.id)">
+									<!-- <button type="button" class="assistant-message__action-button" aria-label="语音朗读"
+										data-tooltip="语音朗读" :class="{ 'is-active': isMessageReadActive(message.id) }"
+										:disabled="isMessageActionBusy(message.id)" @click="handleReadMessage(message.id)">
 										<svg viewBox="0 0 24 24" aria-hidden="true">
 											<path d="M4 10v4h4l5 4V6l-5 4H4Z" />
-											<path d="M16 9.5a4 4 0 0 1 0 5" />
-											<path d="M18.5 7a7 7 0 0 1 0 10" />
+											<path d="M16 8.5v7" />
+											<path d="M19 7v10" />
 										</svg>
-									</button>
+									</button> -->
 									<button type="button" class="assistant-message__action-button"
-										:class="{ 'is-active': messageFeedbackMap[message.id] === 'like' }" aria-label="喜欢" title="喜欢"
+										:class="{ 'is-active': messageFeedbackMap[message.id] === 'like' }" aria-label="喜欢"
+										data-tooltip="喜欢" :disabled="isMessageActionBusy(message.id)"
 										@click="setMessageFeedback(message.id, 'like')">
 										<svg viewBox="0 0 24 24" aria-hidden="true">
 											<path d="M7 10v10" />
@@ -134,7 +145,8 @@
 										</svg>
 									</button>
 									<button type="button" class="assistant-message__action-button"
-										:class="{ 'is-active': messageFeedbackMap[message.id] === 'dislike' }" aria-label="不喜欢" title="不喜欢"
+										:class="{ 'is-active': messageFeedbackMap[message.id] === 'dislike' }" aria-label="不喜欢"
+										data-tooltip="不喜欢" :disabled="isMessageActionBusy(message.id)"
 										@click="setMessageFeedback(message.id, 'dislike')">
 										<svg viewBox="0 0 24 24" aria-hidden="true">
 											<path d="M17 14V4" />
@@ -234,12 +246,14 @@ const {
 	regenerateAssistantMessage,
 	sendText,
 	showInterruptButton,
+	speechCompletedMessageIds,
 	speechResult,
 	speechFollowHighlightIndex,
 	speechFollowText,
 	speechOverallProgress,
 	speechPlaybackMessageId,
 	speechToken,
+	speechLoadingMessageId,
 	startVoiceInput,
 	status,
 	stopVoiceInput,
@@ -253,10 +267,13 @@ const isWidePanel = ref(false)
 const shouldSkipNextMessageAutoScroll = ref(false)
 const copiedMessageId = ref('')
 const messageFeedbackMap = ref<Record<string, MessageFeedback | undefined>>({})
+const messageActionStateMap = ref<Record<string, MessageActionState | undefined>>({})
 type ActionButtonMode = 'record' | 'send' | 'stop' | 'interrupt'
 type HelperTone = 'idle' | 'busy' | 'hint'
 type MessageFeedback = 'like' | 'dislike'
+type MessageActionState = 'copy' | 'regenerate' | 'read'
 let copiedMessageTimer: number | null = null
+const messageActionStateTimers = new Map<string, number>()
 const IDLE_RUNTIME_TIP = '你好，我是数字人小助，很高兴为您服务！'
 
 // 根据当前视频状态展示头部状态文案。
@@ -299,9 +316,47 @@ const renderMessageHtml = (content: string) => renderMarkdownToHtml(content)
 const getMessagePlainText = (message: DemoMessage) =>
 	markdownToPlainText(message.content) || message.content
 
+// 跟读完成后才显示操作栏，动作反馈期间保留当前操作按钮可见。
 const canShowMessageActions = (message: DemoMessage) =>
-	message.role === 'assistant' && !message.pending && Boolean(message.content.trim())
+	message.role === 'assistant' &&
+	!message.pending &&
+	Boolean(message.content.trim()) &&
+	(speechCompletedMessageIds.value.includes(message.id) || Boolean(messageActionStateMap.value[message.id]))
 
+// 单条消息朗读中包含加载和播放阶段，用于同步按钮高亮。
+const isMessageReadActive = (messageId: string) =>
+	messageActionStateMap.value[messageId] === 'read' ||
+	speechPlaybackMessageId.value === messageId ||
+	speechLoadingMessageId.value === messageId
+
+const isMessageActionBusy = (messageId: string) =>
+	messageActionStateMap.value[messageId] === 'regenerate' ||
+	isMessageReadActive(messageId)
+
+// 记录短暂操作反馈，避免点击后按钮没有状态变化。
+const markMessageAction = (messageId: string, action: MessageActionState, duration = 1400) => {
+	messageActionStateMap.value = {
+		...messageActionStateMap.value,
+		[messageId]: action,
+	}
+
+	const existingTimer = messageActionStateTimers.get(messageId)
+	if (existingTimer !== undefined) {
+		window.clearTimeout(existingTimer)
+	}
+
+	const timer = window.setTimeout(() => {
+		messageActionStateTimers.delete(messageId)
+		if (messageActionStateMap.value[messageId] === action) {
+			const nextMap = { ...messageActionStateMap.value }
+			delete nextMap[messageId]
+			messageActionStateMap.value = nextMap
+		}
+	}, duration)
+	messageActionStateTimers.set(messageId, timer)
+}
+
+// 复制成功后短暂切换为已复制状态，再自动恢复。
 const markMessageCopied = (messageId: string) => {
 	copiedMessageId.value = messageId
 
@@ -314,7 +369,7 @@ const markMessageCopied = (messageId: string) => {
 		if (copiedMessageId.value === messageId) {
 			copiedMessageId.value = ''
 		}
-	}, 1600)
+	}, 2000)
 }
 
 const fallbackCopyText = (text: string) => {
@@ -333,6 +388,7 @@ const fallbackCopyText = (text: string) => {
 	}
 }
 
+// 将 assistant 正文转成纯文本后复制，Clipboard 不可用时回退到 textarea。
 const copyMessageContent = async (message: DemoMessage) => {
 	const plainText = getMessagePlainText(message).trim()
 	if (!plainText) {
@@ -347,17 +403,28 @@ const copyMessageContent = async (message: DemoMessage) => {
 		}
 
 		markMessageCopied(message.id)
+		markMessageAction(message.id, 'copy')
 	} catch {
 		fallbackCopyText(plainText)
 		markMessageCopied(message.id)
+		markMessageAction(message.id, 'copy')
 	}
 }
 
+// 复用上一条用户问题替换生成当前 assistant 回复。
 const handleRegenerateMessage = (messageId: string) => {
 	delete messageFeedbackMap.value[messageId]
+	markMessageAction(messageId, 'regenerate', 2200)
 	regenerateAssistantMessage(messageId)
 }
 
+// 触发当前 assistant 回复的数字人朗读流程。
+const handleReadMessage = (messageId: string) => {
+	markMessageAction(messageId, 'read', 2200)
+	readMessageAloud(messageId)
+}
+
+// 喜欢和不喜欢互斥；再次点击当前选中项会取消。
 const setMessageFeedback = (messageId: string, feedback: MessageFeedback) => {
 	messageFeedbackMap.value[messageId] =
 		messageFeedbackMap.value[messageId] === feedback ? undefined : feedback
@@ -485,6 +552,7 @@ const scrollMessagesToBottom = () => {
 	messagesElement.scrollTop = messagesElement.scrollHeight
 }
 
+// 用户展开/收起思考过程时保留当前位置，不触发本次自动滚底。
 const handleThinkToggle = (messageId: string) => {
 	shouldSkipNextMessageAutoScroll.value = true
 	toggleThinkVisibility(messageId)
@@ -509,6 +577,9 @@ onBeforeUnmount(() => {
 	if (copiedMessageTimer !== null) {
 		window.clearTimeout(copiedMessageTimer)
 	}
+
+	messageActionStateTimers.forEach((timer) => window.clearTimeout(timer))
+	messageActionStateTimers.clear()
 })
 </script>
 
@@ -947,7 +1018,31 @@ onBeforeUnmount(() => {
 	font-size: 13px;
 }
 
+.assistant-message__speech-loading {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	width: fit-content;
+	margin: 0 0 8px;
+	padding: 6px 9px;
+	border-radius: 10px;
+	background: rgba(79, 120, 255, 0.08);
+	color: #5f72a0;
+	font-size: 12px;
+	font-weight: 700;
+	line-height: 1.2;
+}
+
+.assistant-message__speech-loading span {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: #5d85ef;
+	box-shadow: 0 0 0 4px rgba(93, 133, 239, 0.12);
+}
+
 .assistant-message__actions {
+	position: relative;
 	display: flex;
 	align-items: center;
 	gap: 4px;
@@ -962,6 +1057,7 @@ onBeforeUnmount(() => {
 	width: 28px;
 	height: 28px;
 	padding: 0;
+	position: relative;
 	border: 1px solid transparent;
 	border-radius: 8px;
 	background: transparent;
@@ -973,12 +1069,44 @@ onBeforeUnmount(() => {
 		color 0.18s ease;
 }
 
+.assistant-message__action-button::after {
+	content: attr(data-tooltip);
+	position: absolute;
+	left: 50%;
+	bottom: calc(100% + 7px);
+	z-index: 30;
+	padding: 5px 8px;
+	border-radius: 8px;
+	background: rgba(34, 43, 60, 0.92);
+	color: #ffffff;
+	font-size: 11px;
+	line-height: 1;
+	white-space: nowrap;
+	opacity: 0;
+	pointer-events: none;
+	transform: translateX(-50%);
+}
+
 .assistant-message__action-button:hover,
 .assistant-message__action-button:focus-visible,
 .assistant-message__action-button.is-active {
 	border-color: rgba(111, 146, 255, 0.24);
 	background: rgba(79, 120, 255, 0.09);
 	color: #4267e8;
+}
+
+.assistant-message__action-button:hover::after,
+.assistant-message__action-button:focus-visible::after {
+	opacity: 1;
+}
+
+.assistant-message__action-button:disabled {
+	cursor: default;
+	opacity: 0.7;
+}
+
+.assistant-message__action-button:disabled::after {
+	display: none;
 }
 
 .assistant-message__action-button svg {

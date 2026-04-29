@@ -163,6 +163,8 @@ export function useDigitalHumanDemo() {
   const speechOverallProgress = ref(0)
   const speechFollowText = ref('')
   const speechFollowHighlightIndex = ref(0)
+  const speechCompletedMessageIds = ref<string[]>([])
+  const speechLoadingMessageId = ref('')
   const conversationId = ref('')
 
   const suggestions = computed(() => DIGITAL_HUMAN_SUGGESTIONS)
@@ -219,6 +221,33 @@ export function useDigitalHumanDemo() {
     () => speechSynthesisClient.isSynthesizing.value,
   )
 
+  // 记录已完整跟读结束的 assistant 消息，用于控制操作栏展示时机。
+  const markSpeechCompleted = (messageId: string) => {
+    if (!messageId || speechCompletedMessageIds.value.includes(messageId)) {
+      return
+    }
+
+    speechCompletedMessageIds.value = [...speechCompletedMessageIds.value, messageId]
+  }
+
+  // 新回复、重新生成等场景会清除旧完成标记，避免操作栏提前出现。
+  const clearSpeechCompleted = (messageId: string) => {
+    if (!messageId || !speechCompletedMessageIds.value.includes(messageId)) {
+      return
+    }
+
+    speechCompletedMessageIds.value = speechCompletedMessageIds.value.filter(
+      (item) => item !== messageId,
+    )
+  }
+
+  // 清理首段语音加载提示，支持按消息 id 定向清理。
+  const clearSpeechLoading = (messageId?: string) => {
+    if (!messageId || speechLoadingMessageId.value === messageId) {
+      speechLoadingMessageId.value = ''
+    }
+  }
+
   // 根据消息 id 获取当前会话中的消息对象。
   const getMessageById = (messageId: string) =>
     messages.value.find((message) => message.id === messageId) ?? null
@@ -257,6 +286,7 @@ export function useDigitalHumanDemo() {
     speechOverallProgress.value = 0
     speechFollowText.value = ''
     speechFollowHighlightIndex.value = 0
+    speechLoadingMessageId.value = ''
     currentAssistantMessageId = ''
     activePlaybackItem = null
     completedSpeechEffectiveChars = 0
@@ -276,6 +306,7 @@ export function useDigitalHumanDemo() {
     latestBodyMarkdown = ''
     totalSpeechEffectiveChars = 0
     difyStreamCompleted = false
+    speechLoadingMessageId.value = ''
   }
 
   // 判断字符是否适合作为语音分段的句末边界。
@@ -483,6 +514,7 @@ export function useDigitalHumanDemo() {
     }
 
     revealFinalAssistantMessage()
+    markSpeechCompleted(currentAssistantMessageId)
     status.value = 'idle'
     resetSpeechQueueState()
     clearInterruptState()
@@ -564,6 +596,7 @@ export function useDigitalHumanDemo() {
         conversationId.value || currentMessage.conversationId
     }
 
+    clearSpeechLoading(item.messageId)
     activeSpeakingFlowId = item.flowId
     activePlaybackItem = item
     speechPlaybackProgress.value = 0
@@ -623,6 +656,9 @@ export function useDigitalHumanDemo() {
 
     const ttsController = new AbortController()
     activeTtsController = ttsController
+    if (item.sequence === 1 && !isPlaybackQueueRunning) {
+      speechLoadingMessageId.value = item.messageId
+    }
     if (!isPlaybackQueueRunning) {
       status.value = 'thinking'
     }
@@ -644,6 +680,7 @@ export function useDigitalHumanDemo() {
         isAbortError(error)
       ) {
         isTtsQueueRunning = false
+        clearSpeechLoading(item.messageId)
         return
       }
 
@@ -657,12 +694,14 @@ export function useDigitalHumanDemo() {
     if (item.flowId !== activeFlowId) {
       speechSynthesisClient.revoke(synthesized)
       isTtsQueueRunning = false
+      clearSpeechLoading(item.messageId)
       return
     }
 
     if (!getMessageById(item.messageId)) {
       speechSynthesisClient.revoke(synthesized)
       isTtsQueueRunning = false
+      clearSpeechLoading(item.messageId)
       finishSpeechQueueIfReady(item.flowId)
       return
     }
@@ -1022,6 +1061,8 @@ export function useDigitalHumanDemo() {
     resetSpeechQueueState()
     clearSpeechProgress()
     currentAssistantMessageId = assistantMessage.id
+    clearSpeechCompleted(assistantMessage.id)
+    clearSpeechLoading(assistantMessage.id)
     setSpeechResult(null)
 
     if (reusableMessage?.role === 'assistant') {
@@ -1334,6 +1375,7 @@ export function useDigitalHumanDemo() {
     targetMessage.thinkCollapsed = !targetMessage.thinkCollapsed
   }
 
+  // 找到当前回复前最近的用户问题，并用同一条 assistant 消息承载重新生成结果。
   const regenerateAssistantMessage = (messageId: string) => {
     const messageIndex = messages.value.findIndex((message) => message.id === messageId)
     const targetMessage = messages.value[messageIndex]
@@ -1357,6 +1399,7 @@ export function useDigitalHumanDemo() {
 
     clearInputHint()
     isExpanded.value = true
+    clearSpeechLoading(messageId)
     runReplyFlow(
       sourceMessage.content,
       sourceMessage.source === 'voice' ? 'voice' : 'text',
@@ -1364,6 +1407,7 @@ export function useDigitalHumanDemo() {
     )
   }
 
+  // 复用数字人 TTS 播放链路朗读单条已完成回复，不覆盖正文内容。
   const readMessageAloud = (messageId: string) => {
     const targetMessage = getMessageById(messageId)
     const speechText = targetMessage
@@ -1373,6 +1417,8 @@ export function useDigitalHumanDemo() {
     if (!targetMessage || targetMessage.role !== 'assistant' || !speechText) {
       return
     }
+
+    clearSpeechLoading(messageId)
 
     if (isBusy.value || isRecording.value || isAwaitingVoiceRecognitionResult.value) {
       cancelCurrentFlow()
@@ -1424,6 +1470,8 @@ export function useDigitalHumanDemo() {
     isRecording.value = false
     status.value = 'idle'
     conversationId.value = ''
+    speechCompletedMessageIds.value = []
+    speechLoadingMessageId.value = ''
     cancelPendingDify()
     cancelPendingSpeechSynthesis()
     resetSpeechQueueState()
@@ -1478,6 +1526,7 @@ export function useDigitalHumanDemo() {
     regenerateAssistantMessage,
     sendText,
     showInterruptButton,
+    speechCompletedMessageIds,
     speechResult,
     speechFollowHighlightIndex,
     speechFollowText,
@@ -1485,6 +1534,7 @@ export function useDigitalHumanDemo() {
     speechPlaybackMessageId,
     speechPlaybackProgress,
     speechToken,
+    speechLoadingMessageId,
     startVoiceInput,
     status,
     stopVoiceInput,
