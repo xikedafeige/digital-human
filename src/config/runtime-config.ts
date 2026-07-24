@@ -53,7 +53,7 @@ export const DIGITAL_HUMAN_RUNTIME_CONFIG = {
     '/xiren-api/v1/audio/speech',
   ),
   ttsModel: readStringEnv(import.meta.env.VITE_TTS_MODEL, 'matcha-tts'),
-  ttsVoice: readStringEnv(import.meta.env.VITE_TTS_VOICE, 'xiaoxiao'),
+  ttsVoice: readStringEnv(import.meta.env.VITE_TTS_VOICE, 'serena'),
   ttsResponseFormat: readStringEnv(
     import.meta.env.VITE_TTS_RESPONSE_FORMAT,
     'mp3',

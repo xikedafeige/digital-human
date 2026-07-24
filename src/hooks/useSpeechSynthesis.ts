@@ -44,12 +44,13 @@ export function useSpeechSynthesis() {
     isSynthesizing.value = true
     errorMessage.value = ''
 
-    const formData = new FormData()
-    formData.append('input', normalizedText)
-    formData.append('model', DIGITAL_HUMAN_RUNTIME_CONFIG.ttsModel)
-    formData.append('voice', DIGITAL_HUMAN_RUNTIME_CONFIG.ttsVoice)
-    formData.append('response_format', DIGITAL_HUMAN_RUNTIME_CONFIG.ttsResponseFormat)
-    formData.append('speed', DIGITAL_HUMAN_RUNTIME_CONFIG.ttsSpeed)
+    const requestBody = {
+      input: normalizedText,
+      model: DIGITAL_HUMAN_RUNTIME_CONFIG.ttsModel,
+      voice: DIGITAL_HUMAN_RUNTIME_CONFIG.ttsVoice,
+      response_format: DIGITAL_HUMAN_RUNTIME_CONFIG.ttsResponseFormat,
+      speed: DIGITAL_HUMAN_RUNTIME_CONFIG.ttsSpeed,
+    }
 
     let audioUrl = ''
 
@@ -57,7 +58,10 @@ export function useSpeechSynthesis() {
       // Request real TTS audio using the same contract as the standalone test page.
       const response = await fetch(buildTtsEndpointUrl(), {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
         signal: options.signal,
       })
 

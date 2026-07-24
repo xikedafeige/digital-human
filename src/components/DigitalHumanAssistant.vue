@@ -337,7 +337,7 @@ const statusLabel = computed(() => VIDEO_STATUS_LABELS[status.value])
 // 汇总录音、生成、播报和空闲状态下的运行提示。
 const statusHint = computed(() => {
 	if (isRecording.value) {
-		return '录音中，再次点击按钮后将结束录音并开始识别。'
+		return '录音中，说完后将自动结束并发送，也可再次点击按钮手动停止。'
 	}
 
 	if (showInterruptButton.value && !isBusy.value) {

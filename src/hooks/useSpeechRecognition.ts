@@ -3,6 +3,9 @@ import { onBeforeUnmount, ref } from 'vue'
 import { DIGITAL_HUMAN_RUNTIME_CONFIG } from '@/config/runtime-config'
 
 const STOP_RESULT_TIMEOUT_MS = 3000
+const VOICE_ACTIVITY_THRESHOLD = 0.015
+const SILENCE_AUTO_STOP_MS = 1200
+const MAX_RECORDING_MS = 30000
 
 interface RecognitionSegment {
   text: string
@@ -35,6 +38,7 @@ interface SpeechRecognitionOptions {
   onPartial?: (text: string) => void
   onSegment?: (text: string) => void
   onError?: (message: string) => void
+  onAutoStop?: () => void
 }
 
 type AudioContextWindow = Window &
@@ -69,9 +73,70 @@ export function useSpeechRecognition(options: SpeechRecognitionOptions = {}) {
   let audioContext: AudioContext | null = null
   let resolveStop: ((text: string) => void) | null = null
   let stopTimerId: number | null = null
+  let maxRecordingTimerId: number | null = null
+  let hasDetectedSpeech = false
+  let silenceStartedAt = 0
+  let hasRequestedAutoStop = false
+
+  const clearMaxRecordingTimer = () => {
+    if (maxRecordingTimerId !== null) {
+      window.clearTimeout(maxRecordingTimerId)
+      maxRecordingTimerId = null
+    }
+  }
+
+  const resetVoiceActivityState = () => {
+    clearMaxRecordingTimer()
+    hasDetectedSpeech = false
+    silenceStartedAt = 0
+    hasRequestedAutoStop = false
+  }
+
+  const requestAutoStop = () => {
+    if (hasRequestedAutoStop || !isRecognizing.value) {
+      return
+    }
+
+    hasRequestedAutoStop = true
+    clearMaxRecordingTimer()
+    options.onAutoStop?.()
+  }
+
+  // 使用音频帧 RMS 判断是否已开始讲话，并在连续静音后请求结束录音。
+  const detectVoiceActivity = (input: Float32Array) => {
+    let squareSum = 0
+
+    for (let index = 0; index < input.length; index += 1) {
+      squareSum += input[index] * input[index]
+    }
+
+    const rms = Math.sqrt(squareSum / input.length)
+    const now = performance.now()
+
+    if (rms >= VOICE_ACTIVITY_THRESHOLD) {
+      hasDetectedSpeech = true
+      silenceStartedAt = 0
+      return
+    }
+
+    if (!hasDetectedSpeech) {
+      return
+    }
+
+    if (!silenceStartedAt) {
+      silenceStartedAt = now
+      return
+    }
+
+    if (now - silenceStartedAt >= SILENCE_AUTO_STOP_MS) {
+      requestAutoStop()
+    }
+  }
 
   // 释放本地音频节点和麦克风设备，避免录音指示器残留。
   const cleanupAudio = async () => {
+    resetVoiceActivityState()
+
     if (processor) {
       processor.disconnect()
       processor.onaudioprocess = null
@@ -203,11 +268,14 @@ export function useSpeechRecognition(options: SpeechRecognitionOptions = {}) {
         }
       }
       ws.onerror = () => {
+        resetVoiceActivityState()
         const messageText = '语音识别服务连接错误'
         errorMessage.value = messageText
         options.onError?.(messageText)
       }
       ws.onclose = () => {
+        resetVoiceActivityState()
+        void cleanupAudio()
         isRecognizing.value = false
 
         if (resolveStop) {
@@ -230,12 +298,14 @@ export function useSpeechRecognition(options: SpeechRecognitionOptions = {}) {
       source.connect(node)
       node.connect(audioContext.destination)
       processor = node
+      maxRecordingTimerId = window.setTimeout(requestAutoStop, MAX_RECORDING_MS)
       processor.onaudioprocess = (event) => {
         if (!ws || ws.readyState !== WebSocket.OPEN) {
           return
         }
 
         const input = event.inputBuffer.getChannelData(0)
+        detectVoiceActivity(input)
         // The ASR service expects little-endian signed 16-bit PCM chunks.
         ws.send(floatTo16BitPCM(input))
       }

@@ -24,10 +24,12 @@ import { useSpeechRecognition } from './useSpeechRecognition'
 import { useSpeechSynthesis } from './useSpeechSynthesis'
 
 const THINKING_PLACEHOLDER = '思考中...'
+const VOICE_AUTO_SEND_DELAY_MS = 500
+const MAX_CONCURRENT_TTS_REQUESTS = 2
 const LEAD_SPEECH_SEGMENT_EFFECTIVE_CHARS = 24
 const LEAD_SPEECH_SEGMENT_MAX_LOOKAHEAD_CHARS = 12
-const SPEECH_SEGMENT_EFFECTIVE_CHARS = 100
-const SPEECH_SEGMENT_MAX_LOOKAHEAD_CHARS = 40
+const SPEECH_SEGMENT_EFFECTIVE_CHARS = 50
+const SPEECH_SEGMENT_MAX_LOOKAHEAD_CHARS = 20
 const SENTENCE_END_CHARS = '。！？；.!?;'
 const SPEECH_PAUSE_END_CHARS = `${SENTENCE_END_CHARS}，,、：:`
 const WHITESPACE_RE = /\s/
@@ -198,16 +200,18 @@ export function useDigitalHumanDemo() {
   let activeVoiceStopId = 0
   let currentAssistantMessageId = ''
   let flowTimers: number[] = []
-  let activeTtsController: AbortController | null = null
+  const activeTtsControllers = new Set<AbortController>()
   let activeDifyController: AbortController | null = null
   let activeDifyTaskId = ''
   let inputHintTimer: number | null = null
+  let voiceAutoSendTimerId: number | null = null
   let ttsQueue: TtsQueueItem[] = []
   let playbackQueue: PlaybackQueueItem[] = []
-  let isTtsQueueRunning = false
+  let activeTtsRequestCount = 0
   let isPlaybackQueueRunning = false
   let queuedSpeechEndIndex = 0
   let queuedSpeechEffectiveChars = 0
+  let nextPlaybackSequence = 1
   let speechSegmentSequence = 0
   let streamSpeechText = ''
   let latestBodyMarkdown = ''
@@ -225,7 +229,15 @@ export function useDigitalHumanDemo() {
     onSegment: (text) => {
       inputText.value = text
     },
-    onError: () => {},
+    onAutoStop: () => {
+      void stopVoiceInput()
+    },
+    onError: () => {
+      void speechRecognition.cancel()
+      isRecording.value = false
+      status.value = 'idle'
+      clearInterruptState()
+    },
   })
   const speechSynthesisClient = useSpeechSynthesis()
   const isSpeechSynthesizing = computed(
@@ -348,10 +360,12 @@ export function useDigitalHumanDemo() {
   const resetSpeechQueueState = () => {
     ttsQueue = []
     playbackQueue = []
-    isTtsQueueRunning = false
+    activeTtsRequestCount = 0
+    activeTtsControllers.clear()
     isPlaybackQueueRunning = false
     queuedSpeechEndIndex = 0
     queuedSpeechEffectiveChars = 0
+    nextPlaybackSequence = 1
     speechSegmentSequence = 0
     streamSpeechText = ''
     latestBodyMarkdown = ''
@@ -447,9 +461,17 @@ export function useDigitalHumanDemo() {
   }
 
   // 清理本轮流程内登记的所有延迟任务。
+  const clearVoiceAutoSendTimer = () => {
+    if (voiceAutoSendTimerId !== null) {
+      window.clearTimeout(voiceAutoSendTimerId)
+      voiceAutoSendTimerId = null
+    }
+  }
+
   const clearFlowTimers = () => {
     flowTimers.forEach((timer) => window.clearTimeout(timer))
     flowTimers = []
+    clearVoiceAutoSendTimer()
   }
 
   // 登记可统一清理的延迟任务，避免中断后旧任务继续执行。
@@ -464,12 +486,9 @@ export function useDigitalHumanDemo() {
 
   // 取消正在进行的 TTS 请求。
   const cancelPendingSpeechSynthesis = () => {
-    if (!activeTtsController) {
-      return
-    }
-
-    activeTtsController.abort()
-    activeTtsController = null
+    activeTtsControllers.forEach((controller) => controller.abort())
+    activeTtsControllers.clear()
+    activeTtsRequestCount = 0
   }
 
   // 取消正在进行的 Dify 请求，并通知 Dify 后端停止任务。
@@ -622,7 +641,7 @@ export function useDigitalHumanDemo() {
       return
     }
 
-    if (isTtsQueueRunning || ttsQueue.length > 0 || !difyStreamCompleted) {
+    if (activeTtsRequestCount > 0 || ttsQueue.length > 0 || !difyStreamCompleted) {
       status.value = 'thinking'
       return
     }
@@ -673,12 +692,16 @@ export function useDigitalHumanDemo() {
       return
     }
 
-    const nextItem = playbackQueue.shift()
+    const nextItemIndex = playbackQueue.findIndex(
+      (item) => item.sequence === nextPlaybackSequence,
+    )
 
-    if (!nextItem) {
+    if (nextItemIndex === -1) {
       finishSpeechQueueIfReady(flowId)
       return
     }
+
+    const [nextItem] = playbackQueue.splice(nextItemIndex, 1)
 
     if (nextItem.flowId !== activeFlowId) {
       speechSynthesisClient.revoke(nextItem.speechResult)
@@ -703,13 +726,13 @@ export function useDigitalHumanDemo() {
       !targetMessage ||
       !normalizedSpeechText
     ) {
-      isTtsQueueRunning = false
       finishSpeechQueueIfReady(item.flowId)
       return
     }
 
     const ttsController = new AbortController()
-    activeTtsController = ttsController
+    activeTtsControllers.add(ttsController)
+    activeTtsRequestCount += 1
     if (item.sequence === 1 && !isPlaybackQueueRunning) {
       speechLoadingMessageId.value = item.messageId
     }
@@ -724,39 +747,35 @@ export function useDigitalHumanDemo() {
         signal: ttsController.signal,
       })
     } catch (error) {
-      if (activeTtsController === ttsController) {
-        activeTtsController = null
-      }
-
       if (
         ttsController.signal.aborted ||
         item.flowId !== activeFlowId ||
         isAbortError(error)
       ) {
-        isTtsQueueRunning = false
+        activeTtsControllers.delete(ttsController)
+        activeTtsRequestCount = activeTtsControllers.size
         clearSpeechLoading(item.messageId)
+        drainTtsQueue(item.flowId)
         return
       }
 
       synthesized = buildMockSpeechResult(normalizedSpeechText)
     }
 
-    if (activeTtsController === ttsController) {
-      activeTtsController = null
-    }
+    activeTtsControllers.delete(ttsController)
+    activeTtsRequestCount = activeTtsControllers.size
 
     if (item.flowId !== activeFlowId) {
       speechSynthesisClient.revoke(synthesized)
-      isTtsQueueRunning = false
       clearSpeechLoading(item.messageId)
       return
     }
 
     if (!getMessageById(item.messageId)) {
       speechSynthesisClient.revoke(synthesized)
-      isTtsQueueRunning = false
       clearSpeechLoading(item.messageId)
       finishSpeechQueueIfReady(item.flowId)
+      drainTtsQueue(item.flowId)
       return
     }
 
@@ -773,31 +792,37 @@ export function useDigitalHumanDemo() {
       updateMessageContent: item.updateMessageContent,
     })
     playbackQueue.sort((left, right) => left.sequence - right.sequence)
-    isTtsQueueRunning = false
     drainPlaybackQueue(item.flowId)
     drainTtsQueue(item.flowId)
   }
 
   // 串行消费 TTS 合成队列，但允许 TTS 请求和当前音频播放并行。
   const drainTtsQueue = (flowId: number) => {
-    if (flowId !== activeFlowId || isTtsQueueRunning) {
+    if (flowId !== activeFlowId) {
       return
     }
 
-    const nextItem = ttsQueue.shift()
-
-    if (!nextItem) {
+    if (!ttsQueue.length) {
       finishSpeechQueueIfReady(flowId)
       return
     }
 
-    if (nextItem.flowId !== activeFlowId) {
-      drainTtsQueue(flowId)
-      return
-    }
+    while (
+      activeTtsRequestCount < MAX_CONCURRENT_TTS_REQUESTS &&
+      ttsQueue.length > 0
+    ) {
+      const nextItem = ttsQueue.shift()
 
-    isTtsQueueRunning = true
-    void synthesizeQueuedSpeech(nextItem)
+      if (!nextItem) {
+        break
+      }
+
+      if (nextItem.flowId !== activeFlowId) {
+        continue
+      }
+
+      void synthesizeQueuedSpeech(nextItem)
+    }
   }
 
   // 从最新 speechText 中切出新分段并加入 TTS 队列。
@@ -1283,6 +1308,7 @@ export function useDigitalHumanDemo() {
     rawText: string,
     source: DemoMessage['source'] = 'text',
   ) => {
+    clearVoiceAutoSendTimer()
     const question = rawText.trim()
     if (!question) {
       return
@@ -1367,7 +1393,24 @@ export function useDigitalHumanDemo() {
 
     if (question) {
       clearInputHint()
-      sendText(question, 'voice')
+      clearInterruptState()
+      inputText.value = question
+      clearVoiceAutoSendTimer()
+      voiceAutoSendTimerId = window.setTimeout(() => {
+        voiceAutoSendTimerId = null
+
+        if (
+          voiceStopId !== activeVoiceStopId ||
+          inputText.value.trim() !== question ||
+          isRecording.value ||
+          isBusy.value ||
+          isAwaitingVoiceRecognitionResult.value
+        ) {
+          return
+        }
+
+        sendText(question, 'voice')
+      }, VOICE_AUTO_SEND_DELAY_MS)
       return
     }
 
@@ -1388,6 +1431,7 @@ export function useDigitalHumanDemo() {
 
     setSpeechResult(null)
     if (activePlaybackItem) {
+      nextPlaybackSequence = activePlaybackItem.sequence + 1
       completedSpeechEffectiveChars = activePlaybackItem.endEffectiveChar
       if (activePlaybackItem.updateMessageContent !== false) {
         displayedSpeechText = streamSpeechText
