@@ -382,6 +382,18 @@ onBeforeUnmount(() => {
   box-shadow: none;
 }
 
+.video-stage::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+  height: 92px;
+  background: linear-gradient(180deg, rgba(250, 250, 248, 0), rgba(250, 250, 248, .96) 76%, #fafaf8 100%);
+  pointer-events: none;
+}
+
 .video-stage__media {
   position: absolute;
   inset: 0;
@@ -399,7 +411,7 @@ onBeforeUnmount(() => {
   object-fit: contain;
   object-position: center bottom;
   opacity: 0;
-  transform: none;
+  transform: scale(1.16);
   /* transition: opacity 180ms ease; */
   filter: none;
   will-change: opacity;
@@ -407,7 +419,7 @@ onBeforeUnmount(() => {
 
 .video-stage__video.is-ready.is-active {
   opacity: 1;
-  transform: none;
+  transform: scale(1.16);
   filter: none;
 }
 
@@ -416,7 +428,7 @@ onBeforeUnmount(() => {
   left: 12px;
   bottom: 12px;
   z-index: 3;
-  display: inline-flex;
+  display: none;
   align-items: center;
   gap: 6px;
   padding: 6px 9px;

@@ -6,10 +6,110 @@ export type DigitalHumanStatus = 'idle' | 'listening' | 'thinking' | 'speaking'
 export type { DemoMessage }
 
 export const DIGITAL_HUMAN_SUGGESTIONS = [
-  '预算绩效流程',
-  '立项审批材料',
-  '事后评价步骤',
-  '系统管理入口',
+  '预算绩效流程是什么？',
+  '立项审批材料有哪些？',
+  '事后评级步骤是什么？',
+  '系统管理入口在哪里？',
+]
+
+export type DigitalHumanAgentIcon =
+  | 'college'
+  | 'elderly-care'
+  | 'policy-radar'
+  | 'budget-allocation'
+  | 'project-risk'
+  | 'fiscal-policy'
+
+export interface DigitalHumanAgentOption {
+  value: string
+  label: string
+  description: string
+  icon: DigitalHumanAgentIcon
+  disabled?: boolean
+}
+
+export interface DigitalHumanAgentGroup {
+  label: string
+  icon: 'industry' | 'decision'
+  options: DigitalHumanAgentOption[]
+}
+
+export const DIGITAL_HUMAN_AGENTS: DigitalHumanAgentGroup[] = [
+  {
+    label: '行业绩效智能体',
+    icon: 'industry',
+    options: [
+      {
+        value: 'higher-education-performance',
+        label: '高职院校绩效智算智能体',
+        description: '高职院校 · 行业绩效',
+        icon: 'college',
+      },
+      {
+        value: 'elderly-care-performance',
+        label: '养老绩效智算智能体',
+        description: '养老行业 · 服务绩效',
+        icon: 'elderly-care',
+        disabled: true,
+      },
+    ],
+  },
+  {
+    label: '决策支持智能体',
+    icon: 'decision',
+    options: [
+      {
+        value: 'policy-radar',
+        label: '政策雷达智能体',
+        description: '政策雷达 · 税收优惠',
+        icon: 'policy-radar',
+        disabled: true,
+      },
+      {
+        value: 'budget-allocation',
+        label: '资金预算分配建议智能体',
+        description: '政府决策 · 预算',
+        icon: 'budget-allocation',
+        disabled: true,
+      },
+      {
+        value: 'project-risk',
+        label: '项目风险预警智能体',
+        description: '风险预警 · 过程监控',
+        icon: 'project-risk',
+        disabled: true,
+      },
+      {
+        value: 'fiscal-policy',
+        label: '财政政策分析智能体',
+        description: '财政政策 · 政策解读',
+        icon: 'fiscal-policy',
+        disabled: true,
+      },
+    ],
+  },
+]
+
+export const DIGITAL_HUMAN_DEVELOPMENT_NOTICE = '当前功能正在开发中...'
+
+export const DIGITAL_HUMAN_TODO_FILTERS = [
+  '全部任务',
+  '事前',
+  '事中',
+  '绩效目标',
+  '事后',
+  '其他',
+]
+
+export const DIGITAL_HUMAN_TODOS = [
+  { id: 1, title: 'xx绩效任务-xxx项目名称', time: '10:04', level: '紧急', actions: ['提问', '审核', '问数'] },
+  { id: 2, title: 'xx绩效任务-xxx项目名称', time: '10:04', level: '普通', actions: ['提问', '写报告', '审核', '问数'] },
+  { id: 3, title: 'xx绩效任务-xxx项目名称', time: '10:04', level: '普通', actions: ['提问', '写报告', '审核', '问数'] },
+]
+
+export const DIGITAL_HUMAN_BOARD_TASKS = [
+  { id: 1, title: 'xxx项目名称', progress: 50 },
+  { id: 2, title: 'xxx项目名称', progress: 50 },
 ]
 
 export const SYSTEM_WELCOME =

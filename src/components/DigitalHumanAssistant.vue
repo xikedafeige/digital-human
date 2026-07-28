@@ -3,24 +3,22 @@
 	<section class="assistant-demo">
 		<div class="assistant-panel" :class="{ 'is-wide': isWidePanel }">
 			<header class="assistant-panel__header">
-				<div class="assistant-panel__identity">
-					<span class="assistant-panel__status-dot" :class="`is-${status}`"></span>
-					<div>
-						<strong>数字人小助</strong>
-						<p>{{ statusLabel }}</p>
-					</div>
-				</div>
+				<nav class="assistant-tabs" aria-label="数字人功能导航">
+					<a-button :class="{ 'is-active': activeTab === 'assistant' }" @click="activeTab = 'assistant'">智能助手</a-button>
+					<a-button :class="{ 'is-active': activeTab === 'todo' }" @click="activeTab = 'todo'">增强待办</a-button>
+					<a-button :class="{ 'is-active': activeTab === 'board' }" @click="activeTab = 'board'">AI任务看板</a-button>
+				</nav>
 
-				<div class="assistant-panel__actions">
+				<div v-if="activeTab === 'assistant'" class="assistant-panel__actions">
 					<button type="button" class="assistant-panel__icon-button" :class="{ 'is-active': isHistoryPanelOpen }"
-						aria-label="历史对话" title="历史对话" data-tooltip="历史对话" @click="toggleHistoryPanel">
+						aria-label="历史对话" data-tooltip="历史对话" @click="toggleHistoryPanel">
 						<svg viewBox="0 0 24 24" aria-hidden="true">
 							<path d="M3.5 12a8.5 8.5 0 1 0 2.4-5.9" />
 							<path d="M3.5 5.5v4h4" />
 							<path d="M12 7.5v5l3.2 1.9" />
 						</svg>
 					</button>
-					<button type="button" class="assistant-panel__icon-button" aria-label="新建对话" title="新建对话" data-tooltip="新建对话"
+					<button type="button" class="assistant-panel__icon-button" aria-label="新建对话" data-tooltip="新建对话"
 						@click="clearConversation">
 						<svg viewBox="0 0 24 24" aria-hidden="true">
 							<path d="M12 5v14" />
@@ -30,8 +28,7 @@
 						</svg>
 					</button>
 					<button type="button" class="assistant-panel__icon-button" :aria-label="isWidePanel ? '收起面板' : '展开面板'"
-						:title="isWidePanel ? '收起面板' : '展开面板'" :data-tooltip="isWidePanel ? '收起面板' : '展开面板'"
-						@click="isWidePanel = !isWidePanel">
+						:data-tooltip="isWidePanel ? '收起面板' : '展开面板'" @click="isWidePanel = !isWidePanel">
 						<svg v-if="!isWidePanel" viewBox="0 0 24 24" aria-hidden="true">
 							<path d="M8 5H5v3" />
 							<path d="M5 5l5.2 5.2" />
@@ -75,7 +72,8 @@
 						:class="{ 'is-active': history.id === currentHistoryId }">
 						<button type="button" class="assistant-history-item__main" @click="loadConversationHistory(history.id)">
 							<strong>{{ history.title }}</strong>
-							<span>{{ formatHistoryTime(history.updatedAt) }} · {{ getHistoryMessageCount(history.messages) }} 条消息</span>
+							<span>{{ formatHistoryTime(history.updatedAt) }} · {{ getHistoryMessageCount(history.messages) }}
+								条消息</span>
 						</button>
 						<button type="button" class="assistant-history-item__delete" aria-label="删除历史对话" title="删除"
 							@click.stop="deleteConversationHistory(history.id)">
@@ -97,23 +95,28 @@
 				</div>
 			</section>
 
-			<div class="assistant-panel__body">
+			<EnhancedTodoPanel v-show="activeTab === 'todo'" :aria-hidden="activeTab !== 'todo'" />
+			<AiTaskBoard v-show="activeTab === 'board'" :aria-hidden="activeTab !== 'board'" />
+			<div v-show="activeTab === 'assistant'" class="assistant-panel__body" :aria-hidden="activeTab !== 'assistant'">
 				<div class="assistant-panel__stage-shell">
 					<VideoDigitalHumanStage :state="status" :speech-result="speechResult" :autoplay-token="speechToken"
 						@speech-complete="handleSpeechComplete" @speech-progress="handleSpeechProgress" />
 
 					<section class="assistant-panel__chat-card">
 						<header class="assistant-panel__chat-header">
-							<div class="assistant-panel__llm-chip">
-								<span class="assistant-panel__llm-dot"></span>
-								<span>LLM 已接入</span>
-							</div>
-							<div class="assistant-panel__runtime-tip">
-								<span>{{ statusHint }}</span>
-							</div>
+							<StarFilled class="assistant-panel__greeting-icon" />
+							<strong>你好，我是小绩！</strong>
 						</header>
 
-						<section ref="messagesRef" class="assistant-messages">
+						<section ref="messagesRef" class="assistant-messages" :class="{ 'is-suggestion-mode': showSuggestions }">
+							<section v-if="showSuggestions" class="assistant-suggestions">
+								<small>试试这样问：</small>
+								<button v-for="item in suggestions.slice(0, 2)" :key="item" type="button"
+									class="assistant-suggestions__item" @click="sendText(item)">
+									{{ item }}
+								</button>
+							</section>
+
 							<article v-for="message in messages" :key="message.id" class="assistant-message" :class="[
 								`is-${message.role}`,
 								{
@@ -164,8 +167,8 @@
 											<path d="M6 16H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
 										</svg>
 									</button>
-									<button type="button" class="assistant-message__action-button" aria-label="重新生成"
-										data-tooltip="重新生成" :class="{ 'is-active': messageActionStateMap[message.id] === 'regenerate' }"
+									<button type="button" class="assistant-message__action-button" aria-label="重新生成" data-tooltip="重新生成"
+										:class="{ 'is-active': messageActionStateMap[message.id] === 'regenerate' }"
 										:disabled="isMessageActionBusy(message.id)" @click="handleRegenerateMessage(message.id)">
 										<svg viewBox="0 0 24 24" aria-hidden="true">
 											<path d="M21 12a9 9 0 0 1-15.3 6.4" />
@@ -225,44 +228,76 @@
 				</div>
 
 				<footer class="assistant-input">
-					<section v-if="suggestions.length" class="assistant-suggestions">
-						<button v-for="item in suggestions" :key="item" type="button" class="assistant-suggestions__item"
-							@click="sendText(item)">
-							{{ item }}
-						</button>
-					</section>
+					<div class="assistant-input__composer">
+						<div class="assistant-input__toolbar">
+							<a-dropdown placement="topLeft" :trigger="['click']" overlay-class-name="assistant-agent-dropdown">
+								<button type="button" class="assistant-agent-trigger" aria-label="选择智能体">
+									<span>{{ selectedAgent.label }}</span>
+									<DownOutlined />
+								</button>
+								<template #overlay>
+									<div class="assistant-agent-menu" role="menu" @click.stop>
+										<section v-for="group in agents" :key="group.label" class="assistant-agent-group">
+											<header class="assistant-agent-group__title">
+												<component :is="agentGroupIconMap[group.icon]" />
+												<span>{{ group.label }}</span>
+											</header>
+											<button v-for="agent in group.options" :key="agent.value" type="button"
+												class="assistant-agent-option" :class="{ 'is-selected': selectedAgent.value === agent.value }"
+												:disabled="agent.disabled" role="menuitem" @click="selectAgent(agent)">
+												<span class="assistant-agent-option__icon">
+													<component :is="agentIconMap[agent.icon]" />
+												</span>
+												<span class="assistant-agent-option__content">
+													<strong>{{ agent.label }}</strong>
+													<small>{{ agent.description }}</small>
+												</span>
+											</button>
+										</section>
+									</div>
+								</template>
+							</a-dropdown>
+							<a-button class="assistant-input__tool-button" type="text" aria-label="知识库" data-tooltip="知识库"
+								@click="notifyDeveloping">
+								<ReadOutlined />
+							</a-button>
+							<a-button class="assistant-input__tool-button" type="text" aria-label="上传文件" data-tooltip="上传文件"
+								@click="notifyDeveloping">
+								<FolderOpenOutlined />
+							</a-button>
+							<span></span>
+							<a-button class="assistant-input__tool-button" type="text" aria-label="历史记录" data-tooltip="历史记录"
+								:class="{ 'is-active': isHistoryPanelOpen }" @click="toggleHistoryPanel">
+								<HistoryOutlined />
+							</a-button>
+							<a-button class="assistant-input__tool-button" type="text" aria-label="新建对话" data-tooltip="新建对话"
+								@click="clearConversation">
+								<CommentOutlined />
+							</a-button>
+						</div>
 
-					<div class="assistant-input__field-wrap">
-						<textarea v-model="inputText" class="assistant-input__field" rows="3" placeholder="输入问题..."
-							:disabled="isRecording" @keydown="handleInputKeydown"></textarea>
+						<div class="assistant-input__field-wrap">
+							<textarea v-model="inputText" class="assistant-input__field" rows="3" placeholder="输入问题..."
+								:disabled="isRecording" @keydown="handleInputKeydown"></textarea>
 
-						<button type="button" class="assistant-input__voice-icon" :class="{
-							'is-recording': actionButtonMode === 'stop',
-							'is-interrupt': actionButtonMode === 'interrupt',
-						}" :aria-label="actionButtonLabel" :data-tooltip="actionButtonLabel" @click="handleActionButtonClick">
-							<svg v-if="actionButtonMode === 'record'" viewBox="0 0 24 24" aria-hidden="true">
-								<path d="M12 14.5c1.7 0 3-1.3 3-3V6.8c0-1.7-1.3-3-3-3s-3 1.3-3 3v4.7c0 1.7 1.3 3 3 3Z" />
-								<path d="M6.5 11.2c0 3 2.4 5.5 5.5 5.5s5.5-2.5 5.5-5.5" />
-								<path d="M12 16.7v3.2" />
-								<path d="M9 19.9h6" />
-							</svg>
-							<svg v-else-if="actionButtonMode === 'send'" viewBox="0 0 24 24" aria-hidden="true">
-								<path d="M21 3 10 14" />
-								<path d="m21 3-7 18-4-7-7-4 18-7Z" />
-							</svg>
-							<svg v-else viewBox="0 0 24 24" aria-hidden="true">
-								<rect x="8.3" y="8.3" width="7.4" height="7.4" rx="1.4" />
-							</svg>
-						</button>
+							<a-button type="text" class="assistant-input__voice-icon" :class="{
+								'is-recording': actionButtonMode === 'stop',
+								'is-interrupt': actionButtonMode === 'interrupt',
+							}" :aria-label="actionButtonLabel" :data-tooltip="actionButtonLabel" @click="handleActionButtonClick">
+								<AudioOutlined v-if="actionButtonMode === 'record'" />
+								<SendOutlined v-else-if="actionButtonMode === 'send'" />
+								<StopOutlined v-else />
+							</a-button>
 
-						<div class="assistant-input__helper" aria-live="polite">
-							<span class="assistant-input__helper-text" :class="{
-								'is-busy': helperTone === 'busy',
-								'is-hint': helperTone === 'hint',
-								'is-empty': !helperText,
-							}" :title="helperTitle">
-								{{ helperText || ' ' }}
-							</span>
+							<div class="assistant-input__helper" aria-live="polite">
+								<span class="assistant-input__helper-text" :class="{
+									'is-busy': helperTone === 'busy',
+									'is-hint': helperTone === 'hint',
+									'is-empty': !helperText,
+								}" :title="helperTitle">
+									{{ helperText || ' ' }}
+								</span>
+							</div>
 						</div>
 					</div>
 				</footer>
@@ -273,11 +308,37 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { Button as AButton, Dropdown as ADropdown, message as antMessage } from 'ant-design-vue'
+import {
+	AlertOutlined,
+	ApartmentOutlined,
+	AppstoreOutlined,
+	AudioOutlined,
+	BankOutlined,
+	CommentOutlined,
+	DownOutlined,
+	FolderOpenOutlined,
+	FundOutlined,
+	HeartOutlined,
+	HistoryOutlined,
+	RadarChartOutlined,
+	ReadOutlined,
+	SendOutlined,
+	StarFilled,
+	StopOutlined,
+} from '@ant-design/icons-vue'
 import type { ConversationHistory, DemoMessage } from '@/types/avatar-types'
 import { markdownToPlainText, renderMarkdownToHtml } from '@/utils/message-content'
 import { useDigitalHumanDemo } from '@/hooks/useDigitalHumanDemo'
 import VideoDigitalHumanStage from './VideoDigitalHumanStage.vue'
-import { VIDEO_STATUS_LABELS } from '@/config/video-avatar-config'
+import EnhancedTodoPanel from './EnhancedTodoPanel.vue'
+import AiTaskBoard from './AiTaskBoard.vue'
+import {
+	DIGITAL_HUMAN_AGENTS,
+	DIGITAL_HUMAN_DEVELOPMENT_NOTICE,
+	type DigitalHumanAgentIcon,
+	type DigitalHumanAgentOption,
+} from '@/config/demo-config'
 
 const {
 	clearConversation,
@@ -318,6 +379,28 @@ const {
 } = useDigitalHumanDemo()
 
 const messagesRef = ref<HTMLElement | null>(null)
+type AssistantTab = 'assistant' | 'todo' | 'board'
+const activeTab = ref<AssistantTab>('assistant')
+const agents = DIGITAL_HUMAN_AGENTS
+const defaultAgent = agents[0].options[0]
+const selectedAgent = ref<DigitalHumanAgentOption>(defaultAgent)
+const agentGroupIconMap = {
+	industry: ApartmentOutlined,
+	decision: AppstoreOutlined,
+}
+const agentIconMap: Record<DigitalHumanAgentIcon, unknown> = {
+	college: BankOutlined,
+	'elderly-care': HeartOutlined,
+	'policy-radar': RadarChartOutlined,
+	'budget-allocation': FundOutlined,
+	'project-risk': AlertOutlined,
+	'fiscal-policy': BankOutlined,
+}
+const selectAgent = (agent: DigitalHumanAgentOption) => {
+	if (!agent.disabled) {
+		selectedAgent.value = agent
+	}
+}
 const isWidePanel = ref(false)
 const shouldSkipNextMessageAutoScroll = ref(false)
 const copiedMessageId = ref('')
@@ -329,35 +412,10 @@ type MessageFeedback = 'like' | 'dislike'
 type MessageActionState = 'copy' | 'regenerate' | 'read'
 let copiedMessageTimer: number | null = null
 const messageActionStateTimers = new Map<string, number>()
-const IDLE_RUNTIME_TIP = '你好，我是数字人小助，很高兴为您服务！'
-
-// 根据当前视频状态展示头部状态文案。
-const statusLabel = computed(() => VIDEO_STATUS_LABELS[status.value])
-
-// 汇总录音、生成、播报和空闲状态下的运行提示。
-const statusHint = computed(() => {
-	if (isRecording.value) {
-		return '录音中，说完后将自动结束并发送，也可再次点击按钮手动停止。'
-	}
-
-	if (showInterruptButton.value && !isBusy.value) {
-		return '正在等待语音识别结果，可点击右侧按钮打断。'
-	}
-
-	if (isSpeechSynthesizing.value) {
-		return '语音跟读中...'
-	}
-
-	if (status.value === 'speaking') {
-		return '语音跟读中...'
-	}
-
-	if (status.value === 'thinking') {
-		return '思考中...'
-	}
-
-	return IDLE_RUNTIME_TIP
-})
+const notifyDeveloping = () => antMessage.info(DIGITAL_HUMAN_DEVELOPMENT_NOTICE)
+const showSuggestions = computed(() =>
+	suggestions.value.length > 0 && !messages.value.some((message) => message.role === 'user'),
+)
 
 const roleLabelMap: Record<DemoMessage['role'], string> = {
 	user: '你',
@@ -1585,11 +1643,8 @@ onBeforeUnmount(() => {
 .assistant-input__voice-icon svg {
 	width: 20px;
 	height: 20px;
-	fill: none;
-	stroke: currentColor;
-	stroke-width: 2;
-	stroke-linecap: round;
-	stroke-linejoin: round;
+	fill: currentColor;
+	stroke: none;
 }
 
 .assistant-input__voice-icon.is-recording {
@@ -1809,6 +1864,456 @@ onBeforeUnmount(() => {
 		bottom: 14px;
 		width: calc(100% - 28px);
 		border-radius: 18px;
+	}
+}
+
+.assistant-panel__header {
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 8px;
+	margin-bottom: 14px;
+	padding: 0 0 0 12px;
+}
+
+.assistant-tabs {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	min-width: 0;
+}
+
+.assistant-tabs button {
+	min-width: 76px;
+	padding: 7px 14px;
+	border: 1px solid #dedbd4;
+	border-radius: 999px;
+	background: #fafaf8;
+	color: #313b4c;
+	font-size: 12px;
+	font-weight: 500;
+	line-height: 18px;
+	white-space: nowrap;
+	cursor: pointer;
+	box-shadow: none;
+	transition: none !important;
+}
+
+.assistant-tabs button.is-active {
+	border-color: transparent;
+	background: linear-gradient(106deg, #1888ff 15%, #6550ff 86%);
+	color: #fff;
+	font-weight: 500;
+	box-shadow: none;
+}
+
+.assistant-tabs button:hover,
+.assistant-tabs button:focus,
+.assistant-tabs button:active {
+	font-weight: 500;
+	transform: none;
+	transition: none !important;
+}
+
+.assistant-panel__actions {
+	display: none;
+}
+
+.assistant-input__composer {
+	position: relative;
+	border: 1px solid #dfe3eb;
+	border-radius: 18px;
+	background: #fafaf8;
+	box-shadow: 0 1px 3px rgba(50, 64, 88, .03);
+}
+
+.assistant-input__composer:focus-within {
+	border-color: #cfd8e8;
+	box-shadow: 0 0 0 2px rgba(82, 126, 255, .06);
+}
+
+.assistant-input__toolbar {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	min-height: 48px;
+	margin: 0;
+	padding: 8px 14px 4px;
+	border: 0;
+	border-radius: 0;
+	color: #495466;
+	background: transparent;
+}
+
+.assistant-agent-trigger {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	width: fit-content;
+	max-width: min(240px, calc(100% - 156px));
+	height: 32px;
+	padding: 0 10px;
+	border: 0;
+	border-radius: 999px;
+	background: #f3f6fc;
+	cursor: pointer;
+}
+
+.assistant-agent-trigger span {
+	min-width: 0;
+	overflow: hidden;
+	background: linear-gradient(100deg, #1888ff 14%, #6550ff 87%);
+	background-clip: text;
+	-webkit-background-clip: text;
+	-webkit-text-fill-color: transparent;
+	font-size: 13px;
+	font-weight: 600;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.assistant-agent-trigger :deep(.anticon) {
+	flex: none;
+	color: #30343b;
+	font-size: 12px;
+}
+
+.assistant-input__toolbar button:not(.assistant-agent-trigger) {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 30px;
+	height: 30px;
+	padding: 0;
+	border: 0;
+	border-radius: 8px;
+	background: transparent;
+	color: #252a31;
+	font-size: 20px;
+	cursor: pointer;
+}
+
+.assistant-input__toolbar button:not(.assistant-agent-trigger):hover,
+.assistant-input__toolbar button:not(.assistant-agent-trigger).is-active {
+	background: #eef5ff;
+	color: #3f86f4;
+}
+
+.assistant-input__toolbar>span {
+	flex: 1;
+}
+
+.assistant-suggestions {
+	flex: none;
+	display: grid;
+	gap: 4px;
+	min-width: 0;
+	margin: 0 0 2px;
+	padding: 8px 12px;
+	overflow: visible;
+	border-radius: 20px;
+	background: linear-gradient(145deg, #f5f7fb 0%, #f8f9fb 100%);
+	white-space: normal;
+	mask-image: none;
+}
+
+.assistant-suggestions small {
+	display: block;
+	margin: 0;
+	color: #9299a5;
+	font-size: 11px;
+	line-height: 16px;
+}
+
+.assistant-suggestions__item {
+	width: 100%;
+	min-height: 40px;
+	padding: 8px 14px;
+	border: 0;
+	border-radius: 16px;
+	background: #fff;
+	box-shadow: 0 5px 15px rgba(77, 89, 112, .055);
+	color: #343a44;
+	text-align: left;
+	font-size: 12px;
+	line-height: 20px;
+	cursor: pointer;
+	transition: background-color .16s ease, color .16s ease, transform .16s ease;
+}
+
+.assistant-suggestions__item:hover {
+	background: #fff;
+	color: #357feb;
+	transform: translateY(-1px);
+}
+
+.assistant-panel__body {
+	gap: 3px;
+}
+
+.assistant-panel {
+	background: #fafaf8;
+}
+
+.assistant-panel__body {
+	background: #fafaf8;
+}
+
+.assistant-panel__stage-shell {
+	grid-template-rows: minmax(245px, .58fr) minmax(180px, .42fr);
+	border: 0;
+	border-radius: 20px;
+	background: #fafaf8;
+	box-shadow: none;
+}
+
+.assistant-panel.is-wide .assistant-panel__stage-shell {
+	border: 0;
+	background: #fafaf8;
+	box-shadow: none;
+}
+
+.assistant-panel__chat-card {
+	position: relative;
+	z-index: 1;
+	min-height: 0;
+	margin-top: 0;
+	padding-top: 12px;
+	border: 0;
+	background: #fafaf8;
+}
+
+.assistant-panel.is-wide .assistant-panel__chat-card {
+	border: 0;
+	background: #fafaf8;
+}
+
+.assistant-panel__chat-header {
+	flex: none;
+	justify-content: flex-start;
+	gap: 7px;
+	color: #27344b;
+}
+
+.assistant-panel__chat-header strong {
+	font-size: 15px;
+	font-weight: 700;
+}
+
+.assistant-panel__greeting-icon {
+	color: #527eff;
+	font-size: 16px;
+}
+
+.assistant-messages {
+	overscroll-behavior: contain;
+}
+
+.assistant-messages.is-suggestion-mode {
+	overflow-y: hidden;
+	padding-right: 0;
+}
+
+.assistant-message.is-system {
+	display: none;
+}
+
+:global(.assistant-agent-dropdown) {
+	width: 280px;
+}
+
+:global(.assistant-agent-dropdown .assistant-agent-menu) {
+	max-height: min(420px, calc(100vh - 28px));
+	padding: 8px;
+	overflow-y: auto;
+	border: 1px solid #d9dde5;
+	border-radius: 12px;
+	background: #fff;
+	box-shadow: 0 12px 30px rgba(38, 51, 74, .16);
+	scrollbar-color: #8f8f8f transparent;
+	scrollbar-width: auto;
+}
+
+:global(.assistant-agent-dropdown .assistant-agent-menu::-webkit-scrollbar) {
+	width: 10px;
+}
+
+:global(.assistant-agent-dropdown .assistant-agent-menu::-webkit-scrollbar-thumb) {
+	border: 2px solid transparent;
+	border-radius: 999px;
+	background: #8f8f8f;
+	background-clip: padding-box;
+}
+
+:global(.assistant-agent-dropdown .assistant-agent-group + .assistant-agent-group) {
+	margin-top: 5px;
+	padding-top: 7px;
+	border-top: 1px solid #e4e6ea;
+}
+
+:global(.assistant-agent-dropdown .assistant-agent-group__title) {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	height: 26px;
+	padding: 0 8px;
+	color: #777e89;
+	font-size: 12px;
+	font-weight: 600;
+}
+
+:global(.assistant-agent-dropdown .assistant-agent-group__title .anticon) {
+	color: #75859c;
+	font-size: 13px;
+}
+
+:global(.assistant-agent-dropdown .assistant-agent-option) {
+	display: grid;
+	grid-template-columns: 34px minmax(0, 1fr);
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	min-height: 56px;
+	margin: 1px 0;
+	padding: 6px 8px;
+	border: 0;
+	border-radius: 10px;
+	background: transparent;
+	text-align: left;
+	cursor: pointer;
+}
+
+:global(.assistant-agent-dropdown .assistant-agent-option.is-selected) {
+	background: #f0f4fc;
+}
+
+:global(.assistant-agent-dropdown .assistant-agent-option:not(:disabled):hover) {
+	background: #f5f7fb;
+}
+
+:global(.assistant-agent-dropdown .assistant-agent-option:disabled) {
+	opacity: 1;
+	cursor: not-allowed;
+}
+
+:global(.assistant-agent-dropdown .assistant-agent-option__icon) {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 34px;
+	height: 34px;
+	border-radius: 6px;
+	background: #edf3ff;
+	color: #718bb6;
+	font-size: 14px;
+}
+
+:global(.assistant-agent-dropdown .assistant-agent-option__content) {
+	display: block;
+	min-width: 0;
+}
+
+:global(.assistant-agent-dropdown .assistant-agent-option__content strong),
+:global(.assistant-agent-dropdown .assistant-agent-option__content small) {
+	display: block;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+:global(.assistant-agent-dropdown .assistant-agent-option__content strong) {
+	color: #111318;
+	font-size: 13px;
+	font-weight: 700;
+	line-height: 19px;
+}
+
+:global(.assistant-agent-dropdown .assistant-agent-option__content small) {
+	margin-top: 1px;
+	color: #858c98;
+	font-size: 11px;
+	line-height: 17px;
+}
+
+.assistant-input {
+	padding: 2px 11px 6px;
+	overflow: visible;
+	border: 0;
+	border-radius: 18px;
+	background: #fafaf8;
+	box-shadow: none;
+}
+
+.assistant-input__field-wrap {
+	padding: 0 14px 8px;
+	border: 0;
+	border-radius: 0 0 18px 18px;
+	background: transparent;
+}
+
+.assistant-input__tool-button,
+.assistant-input__voice-icon,
+.assistant-panel__icon-button,
+.assistant-message__action-button {
+	position: relative;
+}
+
+.assistant-input__tool-button::after,
+.assistant-input__voice-icon::after,
+.assistant-panel__icon-button::after,
+.assistant-message__action-button::after {
+	content: attr(data-tooltip);
+	position: absolute;
+	left: 50%;
+	right: auto;
+	top: auto;
+	bottom: calc(100% + 8px);
+	z-index: 50;
+	padding: 6px 9px;
+	border-radius: 7px;
+	background: rgba(32, 36, 44, .94);
+	box-shadow: 0 4px 12px rgba(22, 28, 39, .16);
+	color: #fff;
+	font-size: 11px;
+	font-weight: 400;
+	line-height: 1;
+	white-space: nowrap;
+	opacity: 0;
+	pointer-events: none;
+	transform: translate(-50%, 3px);
+	transition: opacity .14s ease, transform .14s ease;
+}
+
+.assistant-input__tool-button:hover::after,
+.assistant-input__tool-button:focus-visible::after,
+.assistant-input__voice-icon:hover::after,
+.assistant-input__voice-icon:focus-visible::after,
+.assistant-panel__icon-button:hover::after,
+.assistant-panel__icon-button:focus-visible::after,
+.assistant-message__action-button:hover::after,
+.assistant-message__action-button:focus-visible::after {
+	opacity: 1;
+	transform: translate(-50%, 0);
+}
+
+@media (max-width: 430px) {
+	.assistant-panel__header {
+		padding-left: 20px;
+	}
+
+	.assistant-tabs {
+		gap: 4px;
+	}
+
+	.assistant-tabs button {
+		padding: 7px 9px;
+		font-size: 11px;
+	}
+
+	:global(.assistant-agent-dropdown) {
+		width: min(280px, calc(100vw - 24px));
 	}
 }
 </style>
