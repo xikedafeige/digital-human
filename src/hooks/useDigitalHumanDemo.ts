@@ -220,6 +220,8 @@ export function useDigitalHumanDemo() {
   let completedSpeechEffectiveChars = 0
   let totalSpeechEffectiveChars = 0
   let difyStreamCompleted = false
+  // 远端历史仅作为只读快照展示，不能回写浏览器本地历史。
+  let isExternalHistorySnapshot = false
 
   const difyChatClient = useDifyChat()
   const speechRecognition = useSpeechRecognition({
@@ -281,6 +283,10 @@ export function useDigitalHumanDemo() {
 
   // 将当前消息列表和 Dify 上下文写入本地历史；写入失败时保留当前内存列表。
   const persistCurrentConversation = () => {
+    if (isExternalHistorySnapshot) {
+      return
+    }
+
     if (!hasPersistableMessages()) {
       return
     }
@@ -1314,6 +1320,12 @@ export function useDigitalHumanDemo() {
       return
     }
 
+    // 远端历史没有可复用的 Dify conversation_id。用户开始新问题时，
+    // 清掉只读快照并从现有欢迎态流程重新建立 Dify 会话。
+    if (isExternalHistorySnapshot) {
+      resetToWelcome()
+    }
+
     if (isBusy.value || isRecording.value || isAwaitingVoiceRecognitionResult.value) {
       cancelCurrentFlow()
     }
@@ -1576,6 +1588,7 @@ export function useDigitalHumanDemo() {
 
   // 重置会话到欢迎语，同时清理上下文和运行状态。
   const resetToWelcome = () => {
+    isExternalHistorySnapshot = false
     messages.value = [
       createMessage('system', SYSTEM_WELCOME, {
         source: 'system',
@@ -1622,6 +1635,7 @@ export function useDigitalHumanDemo() {
       return
     }
 
+    isExternalHistorySnapshot = false
     // 跳过历史写入，避免点击历史项时把当前会话额外保存成新记录。
     cancelCurrentFlow({ persistHistory: false })
     messages.value = targetHistory.messages.map((message) => ({
@@ -1639,6 +1653,25 @@ export function useDigitalHumanDemo() {
       )
       .map((message) => message.id)
     speechLoadingMessageId.value = ''
+    isHistoryPanelOpen.value = false
+    status.value = 'idle'
+  }
+
+  // 装载智能引导服务端会话消息，仅用于只读回放，不写入 localStorage。
+  const loadExternalConversationMessages = (externalMessages: DemoMessage[]) => {
+    cancelCurrentFlow({ persistHistory: false })
+    messages.value = externalMessages.map((message) => ({
+      ...message,
+      pending: false,
+      thinkCollapsed: message.thinkCollapsed ?? true,
+    }))
+    conversationId.value = ''
+    currentHistoryId.value = ''
+    inputText.value = ''
+    // 远端回放不开放重新生成、反馈和朗读等会改变当前流程的消息动作。
+    speechCompletedMessageIds.value = []
+    speechLoadingMessageId.value = ''
+    isExternalHistorySnapshot = true
     isHistoryPanelOpen.value = false
     status.value = 'idle'
   }
@@ -1694,6 +1727,7 @@ export function useDigitalHumanDemo() {
     isSpeechSynthesizing,
     latestAssistantText,
     loadConversationHistory,
+    loadExternalConversationMessages,
     messages,
     readMessageAloud,
     regenerateAssistantMessage,

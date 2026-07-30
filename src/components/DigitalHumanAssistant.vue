@@ -11,7 +11,7 @@
 
 				<div v-if="activeTab === 'assistant'" class="assistant-panel__actions">
 					<button type="button" class="assistant-panel__icon-button" :class="{ 'is-active': isHistoryPanelOpen }"
-						aria-label="历史对话" data-tooltip="历史对话" @click="toggleHistoryPanel">
+						aria-label="历史对话" data-tooltip="历史对话" @click="handleHistoryToggle">
 						<svg viewBox="0 0 24 24" aria-hidden="true">
 							<path d="M3.5 12a8.5 8.5 0 1 0 2.4-5.9" />
 							<path d="M3.5 5.5v4h4" />
@@ -19,7 +19,7 @@
 						</svg>
 					</button>
 					<button type="button" class="assistant-panel__icon-button" aria-label="新建对话" data-tooltip="新建对话"
-						@click="clearConversation">
+						@click="handleClearConversation">
 						<svg viewBox="0 0 24 24" aria-hidden="true">
 							<path d="M12 5v14" />
 							<path d="M5 12h14" />
@@ -57,9 +57,9 @@
 				<header class="assistant-history-panel__header">
 					<div>
 						<strong>历史对话</strong>
-						<span>{{ conversationHistories.length }} 条记录</span>
+						<span>{{ historyTotalCount }} 条记录</span>
 					</div>
-					<button type="button" class="assistant-history-panel__close" aria-label="关闭历史对话" @click="toggleHistoryPanel">
+					<button type="button" class="assistant-history-panel__close" aria-label="关闭历史对话" @click="handleHistoryToggle">
 						<svg viewBox="0 0 24 24" aria-hidden="true">
 							<path d="M6 6l12 12" />
 							<path d="M18 6L6 18" />
@@ -67,35 +67,73 @@
 					</button>
 				</header>
 
-				<div v-if="conversationHistories.length" class="assistant-history-panel__list">
-					<article v-for="history in conversationHistories" :key="history.id" class="assistant-history-item"
-						:class="{ 'is-active': history.id === currentHistoryId }">
-						<button type="button" class="assistant-history-item__main" @click="loadConversationHistory(history.id)">
-							<strong>{{ history.title }}</strong>
-							<span>{{ formatHistoryTime(history.updatedAt) }} · {{ getHistoryMessageCount(history.messages) }}
-								条消息</span>
-						</button>
-						<button type="button" class="assistant-history-item__delete" aria-label="删除历史对话" title="删除"
-							@click.stop="deleteConversationHistory(history.id)">
-							<svg viewBox="0 0 24 24" aria-hidden="true">
-								<path d="M4 7h16" />
-								<path d="M9 7V5h6v2" />
-								<path d="M7 7l1 13h8l1-13" />
-								<path d="M10 11v5" />
-								<path d="M14 11v5" />
-							</svg>
-						</button>
-					</article>
-				</div>
+				<div class="assistant-history-panel__content">
+					<section class="assistant-history-group" aria-label="服务端记录">
+						<header class="assistant-history-group__header">
+							<strong>服务端记录</strong>
+							<span>{{ remoteConversations.length }} 条</span>
+						</header>
+						<div v-if="remoteHistoryLoading" class="assistant-history-state">正在加载服务端记录...</div>
+						<div v-else-if="remoteHistoryError" class="assistant-history-state is-error">
+							<span>{{ remoteHistoryError }}</span>
+							<button type="button" @click="loadRemoteConversations">重试</button>
+						</div>
+						<div v-else-if="remoteConversations.length" class="assistant-history-panel__list">
+							<article v-for="history in remoteConversations" :key="`remote-${history.id}`"
+								class="assistant-history-item assistant-history-item--remote"
+								:class="{ 'is-active': history.id === activeRemoteHistoryId }">
+								<button type="button" class="assistant-history-item__main" @click="loadRemoteConversation(history)">
+									<div class="assistant-history-item__title-row">
+										<strong>{{ history.title }}</strong>
+										<span v-if="history.conversationType" class="assistant-history-item__type">
+											{{ history.conversationType === 'project' ? '项目助手' : '数字人' }}
+										</span>
+									</div>
+									<span>{{ formatGuideHistoryTime(history.updatedAt || history.lastMessageAt) }} · {{ history.messageCount }} 条消息</span>
+									<small v-if="history.lastMessagePreview">{{ history.lastMessagePreview }}</small>
+								</button>
+							</article>
+						</div>
+						<div v-else class="assistant-history-state">暂无服务端记录</div>
+						<div v-if="remoteMessagesLoading" class="assistant-history-state is-compact">正在加载会话消息...</div>
+						<div v-else-if="remoteMessagesError" class="assistant-history-state is-error is-compact">
+							<span>{{ remoteMessagesError }}</span>
+							<button v-if="remoteMessagesRetryTarget" type="button"
+								@click="loadRemoteConversation(remoteMessagesRetryTarget)">重试</button>
+						</div>
+					</section>
 
-				<div v-else class="assistant-history-panel__empty">
-					<span></span>
-					<strong>暂无历史对话</strong>
-					<p>发送问题后会自动保存到这里。</p>
+					<section class="assistant-history-group" aria-label="本地记录">
+						<header class="assistant-history-group__header">
+							<strong>本地记录</strong>
+							<span>{{ conversationHistories.length }} 条</span>
+						</header>
+						<div v-if="conversationHistories.length" class="assistant-history-panel__list">
+							<article v-for="history in conversationHistories" :key="history.id" class="assistant-history-item"
+								:class="{ 'is-active': history.id === currentHistoryId }">
+								<button type="button" class="assistant-history-item__main" @click="handleLocalHistorySelect(history.id)">
+									<strong>{{ history.title }}</strong>
+									<span>{{ formatHistoryTime(history.updatedAt) }} · {{ getHistoryMessageCount(history.messages) }}
+										条消息</span>
+								</button>
+								<button type="button" class="assistant-history-item__delete" aria-label="删除历史对话" title="删除"
+									@click.stop="deleteConversationHistory(history.id)">
+									<svg viewBox="0 0 24 24" aria-hidden="true">
+										<path d="M4 7h16" />
+										<path d="M9 7V5h6v2" />
+										<path d="M7 7l1 13h8l1-13" />
+										<path d="M10 11v5" />
+										<path d="M14 11v5" />
+									</svg>
+								</button>
+							</article>
+						</div>
+						<div v-else class="assistant-history-state">暂无本地记录</div>
+					</section>
 				</div>
 			</section>
 
-			<EnhancedTodoPanel v-show="activeTab === 'todo'" :aria-hidden="activeTab !== 'todo'" />
+			<EnhancedTodoPanel v-show="activeTab === 'todo'" :active="activeTab === 'todo'" :aria-hidden="activeTab !== 'todo'" />
 			<AiTaskBoard v-show="activeTab === 'board'" :aria-hidden="activeTab !== 'board'" />
 			<div v-show="activeTab === 'assistant'" class="assistant-panel__body" :aria-hidden="activeTab !== 'assistant'">
 				<div class="assistant-panel__stage-shell">
@@ -267,11 +305,15 @@
 							</a-button>
 							<span></span>
 							<a-button class="assistant-input__tool-button" type="text" aria-label="历史记录" data-tooltip="历史记录"
-								:class="{ 'is-active': isHistoryPanelOpen }" @click="toggleHistoryPanel">
+								:class="{ 'is-active': isHistoryPanelOpen }" @click="handleHistoryToggle">
 								<HistoryOutlined />
 							</a-button>
+							<a-button class="assistant-input__tool-button" type="text" aria-label="近期项目" data-tooltip="近期项目"
+								@click="isRecentProjectsOpen = true">
+								<ProjectOutlined />
+							</a-button>
 							<a-button class="assistant-input__tool-button" type="text" aria-label="新建对话" data-tooltip="新建对话"
-								@click="clearConversation">
+								@click="handleClearConversation">
 								<CommentOutlined />
 							</a-button>
 						</div>
@@ -303,6 +345,7 @@
 				</footer>
 			</div>
 		</div>
+		<RecentProjectsModal v-model:open="isRecentProjectsOpen" />
 	</section>
 </template>
 
@@ -321,6 +364,7 @@ import {
 	FundOutlined,
 	HeartOutlined,
 	HistoryOutlined,
+	ProjectOutlined,
 	RadarChartOutlined,
 	ReadOutlined,
 	SendOutlined,
@@ -333,6 +377,12 @@ import { useDigitalHumanDemo } from '@/hooks/useDigitalHumanDemo'
 import VideoDigitalHumanStage from './VideoDigitalHumanStage.vue'
 import EnhancedTodoPanel from './EnhancedTodoPanel.vue'
 import AiTaskBoard from './AiTaskBoard.vue'
+import RecentProjectsModal from './RecentProjectsModal.vue'
+import {
+	fetchGuideConversationMessages,
+	fetchGuideConversations,
+	type GuideConversationSummary,
+} from '@/services/guide-api'
 import {
 	DIGITAL_HUMAN_AGENTS,
 	DIGITAL_HUMAN_DEVELOPMENT_NOTICE,
@@ -356,6 +406,7 @@ const {
 	isRecording,
 	isSpeechSynthesizing,
 	loadConversationHistory,
+	loadExternalConversationMessages,
 	messages,
 	readMessageAloud,
 	regenerateAssistantMessage,
@@ -402,6 +453,16 @@ const selectAgent = (agent: DigitalHumanAgentOption) => {
 	}
 }
 const isWidePanel = ref(false)
+const isRecentProjectsOpen = ref(false)
+const remoteConversations = ref<GuideConversationSummary[]>([])
+const remoteHistoryLoading = ref(false)
+const remoteHistoryError = ref('')
+const activeRemoteHistoryId = ref('')
+const remoteMessagesLoading = ref(false)
+const remoteMessagesError = ref('')
+const remoteMessagesRetryTarget = ref<GuideConversationSummary | null>(null)
+let remoteHistoryRequest: AbortController | null = null
+let remoteMessagesRequest: AbortController | null = null
 const shouldSkipNextMessageAutoScroll = ref(false)
 const copiedMessageId = ref('')
 const messageFeedbackMap = ref<Record<string, MessageFeedback | undefined>>({})
@@ -415,6 +476,9 @@ const messageActionStateTimers = new Map<string, number>()
 const notifyDeveloping = () => antMessage.info(DIGITAL_HUMAN_DEVELOPMENT_NOTICE)
 const showSuggestions = computed(() =>
 	suggestions.value.length > 0 && !messages.value.some((message) => message.role === 'user'),
+)
+const historyTotalCount = computed(() =>
+	conversationHistories.value.length + remoteConversations.value.length,
 )
 
 const roleLabelMap: Record<DemoMessage['role'], string> = {
@@ -679,6 +743,136 @@ const formatHistoryTime = (timestamp: number) => {
 const getHistoryMessageCount = (messages: ConversationHistory['messages']) =>
 	messages.filter((message) => message.role !== 'system').length
 
+const parseGuideHistoryTimestamp = (value: string, fallback = Date.now()) => {
+	const normalized = value.trim().replace(' ', 'T')
+	const timestamp = normalized ? Date.parse(normalized) : Number.NaN
+	return Number.isFinite(timestamp) ? timestamp : fallback
+}
+
+const formatGuideHistoryTime = (value: string) => {
+	if (!value) {
+		return '时间未知'
+	}
+
+	const timestamp = parseGuideHistoryTimestamp(value, Number.NaN)
+	return Number.isFinite(timestamp) ? formatHistoryTime(timestamp) : value
+}
+
+const abortRemoteHistoryRequests = () => {
+	remoteHistoryRequest?.abort()
+	remoteHistoryRequest = null
+	remoteMessagesRequest?.abort()
+	remoteMessagesRequest = null
+	remoteHistoryLoading.value = false
+	remoteMessagesLoading.value = false
+}
+
+const loadRemoteConversations = async () => {
+	remoteHistoryRequest?.abort()
+	const controller = new AbortController()
+	remoteHistoryRequest = controller
+	remoteHistoryLoading.value = true
+	remoteHistoryError.value = ''
+	remoteMessagesError.value = ''
+	remoteMessagesRetryTarget.value = null
+
+	try {
+		const conversations = await fetchGuideConversations(controller.signal)
+		if (!controller.signal.aborted) {
+			remoteConversations.value = conversations
+		}
+	} catch (error) {
+		if (!controller.signal.aborted) {
+			remoteHistoryError.value = error instanceof Error ? error.message : '服务端历史加载失败'
+		}
+	} finally {
+		if (remoteHistoryRequest === controller) {
+			remoteHistoryRequest = null
+			remoteHistoryLoading.value = false
+		}
+	}
+}
+
+const loadRemoteConversation = async (history: GuideConversationSummary) => {
+	remoteMessagesRequest?.abort()
+	const controller = new AbortController()
+	remoteMessagesRequest = controller
+	activeRemoteHistoryId.value = history.id
+	remoteMessagesLoading.value = true
+	remoteMessagesError.value = ''
+	remoteMessagesRetryTarget.value = history
+
+	try {
+		const remoteMessages = await fetchGuideConversationMessages(history.id, controller.signal)
+		if (controller.signal.aborted) {
+			return
+		}
+
+		const replayMessages: DemoMessage[] = remoteMessages
+			.filter((message) => {
+				const role = message.role.toUpperCase()
+				return (role === 'USER' || role === 'ASSISTANT') && Boolean(message.content.trim())
+			})
+			.map<DemoMessage>((message, index) => {
+				const isUserMessage = message.role.toUpperCase() === 'USER'
+				const role: DemoMessage['role'] = isUserMessage ? 'user' : 'assistant'
+				return {
+					id: message.id || `${history.id}-${index}`,
+					role,
+					content: message.content,
+					timestamp: parseGuideHistoryTimestamp(message.createdAt, Date.now() + index),
+					pending: false,
+					source: 'text',
+					engine: 'dify',
+					renderMode: role === 'user' ? 'plain' : 'markdown',
+					thinkCollapsed: true,
+				}
+			})
+
+		if (!replayMessages.length) {
+			throw new Error('该会话暂无可展示的消息')
+		}
+
+		loadExternalConversationMessages(replayMessages)
+	} catch (error) {
+		if (!controller.signal.aborted) {
+			remoteMessagesError.value = error instanceof Error ? error.message : '会话消息加载失败'
+		}
+	} finally {
+		if (remoteMessagesRequest === controller) {
+			remoteMessagesRequest = null
+			remoteMessagesLoading.value = false
+		}
+	}
+}
+
+const handleLocalHistorySelect = (historyId: string) => {
+	remoteMessagesRequest?.abort()
+	remoteMessagesRequest = null
+	remoteMessagesLoading.value = false
+	remoteMessagesError.value = ''
+	remoteMessagesRetryTarget.value = null
+	activeRemoteHistoryId.value = ''
+	loadConversationHistory(historyId)
+}
+
+const handleHistoryToggle = () => {
+	const shouldOpen = !isHistoryPanelOpen.value
+	toggleHistoryPanel()
+
+	if (shouldOpen) {
+		void loadRemoteConversations()
+		return
+	}
+
+	abortRemoteHistoryRequests()
+}
+
+const handleClearConversation = () => {
+	abortRemoteHistoryRequests()
+	clearConversation()
+}
+
 const scrollMessagesToBottom = () => {
 	const messagesElement = messagesRef.value
 	if (!messagesElement) {
@@ -710,6 +904,8 @@ watch(
 )
 
 onBeforeUnmount(() => {
+	abortRemoteHistoryRequests()
+
 	if (copiedMessageTimer !== null) {
 		window.clearTimeout(copiedMessageTimer)
 	}
@@ -937,13 +1133,44 @@ onBeforeUnmount(() => {
 	stroke-linecap: round;
 }
 
+.assistant-history-panel__content {
+	min-height: 0;
+	padding: 10px 2px 2px;
+	overflow-y: auto;
+}
+
+.assistant-history-group + .assistant-history-group {
+	margin-top: 14px;
+	padding-top: 14px;
+	border-top: 1px solid rgba(223, 232, 248, 0.76);
+}
+
+.assistant-history-group__header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	padding: 0 2px;
+}
+
+.assistant-history-group__header strong {
+	color: #40536f;
+	font-size: 12px;
+	line-height: 18px;
+}
+
+.assistant-history-group__header span {
+	color: #95a0b3;
+	font-size: 11px;
+}
+
 .assistant-history-panel__list {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
 	min-height: 0;
-	padding: 10px 2px 2px;
-	overflow-y: auto;
+	padding: 8px 0 0;
+	overflow: visible;
 }
 
 .assistant-history-item {
@@ -1001,6 +1228,79 @@ onBeforeUnmount(() => {
 
 .assistant-history-item.is-active .assistant-history-item__main strong {
 	color: #4267e8;
+}
+
+.assistant-history-item--remote {
+	grid-template-columns: minmax(0, 1fr);
+}
+
+.assistant-history-item__title-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+}
+
+.assistant-history-item__title-row strong {
+	flex: 1;
+	min-width: 0;
+}
+
+.assistant-history-item__type {
+	flex: none;
+	margin: 0 !important;
+	padding: 1px 5px;
+	border-radius: 999px;
+	background: rgba(79, 120, 255, 0.1);
+	color: #5376de !important;
+	font-size: 9px !important;
+	line-height: 15px !important;
+}
+
+.assistant-history-item__main small {
+	display: block;
+	margin-top: 4px;
+	overflow: hidden;
+	color: #94a0b4;
+	font-size: 10px;
+	line-height: 15px;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.assistant-history-state {
+	display: flex;
+	min-height: 64px;
+	align-items: center;
+	justify-content: center;
+	gap: 7px;
+	padding: 10px;
+	color: #8a98ad;
+	font-size: 11px;
+	text-align: center;
+}
+
+.assistant-history-state.is-compact {
+	min-height: auto;
+	margin-top: 7px;
+	padding: 7px;
+	border-radius: 8px;
+	background: rgba(244, 247, 252, 0.82);
+}
+
+.assistant-history-state.is-error {
+	flex-direction: column;
+	color: #c75a4b;
+}
+
+.assistant-history-state button {
+	padding: 3px 9px;
+	border: 1px solid #cbd9ef;
+	border-radius: 6px;
+	background: #fff;
+	color: #4384e8;
+	font-size: 11px;
+	cursor: pointer;
 }
 
 .assistant-history-item__delete {
