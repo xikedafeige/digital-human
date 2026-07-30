@@ -23,6 +23,7 @@ import {
 import {
   markdownToPlainText,
   parseReplyContent,
+  splitMarkdownRenderBlocks,
   type ParsedReplyContent,
 } from '@/utils/message-content'
 import { useSpeechRecognition } from './useSpeechRecognition'
@@ -105,6 +106,7 @@ const createMessage = (
       | 'thinkContent'
       | 'thinkCollapsed'
       | 'renderMode'
+      | 'renderBlocks'
       | 'routeCard'
       | 'suggestions'
       | 'projectContext'
@@ -123,6 +125,7 @@ const createMessage = (
   thinkContent: options.thinkContent,
   thinkCollapsed: options.thinkCollapsed ?? true,
   renderMode: options.renderMode ?? (role === 'user' ? 'plain' : 'markdown'),
+  renderBlocks: options.renderBlocks,
   routeCard: options.routeCard,
   suggestions: options.suggestions,
   projectContext: options.projectContext,
@@ -230,6 +233,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
   let speechSegmentSequence = 0
   let streamSpeechText = ''
   let latestBodyMarkdown = ''
+  let latestMessageRenderBlocks: DemoMessage['renderBlocks'] = []
   let displayedSpeechText = ''
   let activePlaybackItem: PlaybackQueueItem | null = null
   let completedSpeechEffectiveChars = 0
@@ -345,6 +349,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     speechSegmentSequence = 0
     streamSpeechText = ''
     latestBodyMarkdown = ''
+    latestMessageRenderBlocks = []
     totalSpeechEffectiveChars = 0
     replyStreamCompleted = false
     speechLoadingMessageId.value = ''
@@ -540,6 +545,10 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     }
 
     targetMessage.content = latestBodyMarkdown || displayedSpeechText
+    targetMessage.renderBlocks =
+      latestMessageRenderBlocks?.length
+        ? latestMessageRenderBlocks
+        : splitMarkdownRenderBlocks(targetMessage.content)
     targetMessage.pending = false
     targetMessage.renderMode = 'markdown'
   }
@@ -572,6 +581,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     }
 
     latestBodyMarkdown = content.bodyMarkdown || latestBodyMarkdown
+    latestMessageRenderBlocks = content.renderBlocks
 
     const nextBodyContent =
       displayedSpeechText ||
@@ -1205,6 +1215,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
       assistantMessage.thinkContent = ''
       assistantMessage.thinkCollapsed = true
       assistantMessage.renderMode = 'markdown'
+      assistantMessage.renderBlocks = undefined
       assistantMessage.routeCard = undefined
       assistantMessage.suggestions = undefined
       assistantMessage.projectContext = projectContext ?? undefined
@@ -1233,13 +1244,20 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
             return
           }
 
-          projectConversationId.value = result.conversationId || projectConversationId.value
+          const nextProjectConversationId =
+            result.conversationId || projectConversationId.value
+          const isCurrentProjectContext =
+            selectedProjectContext.value?.commissionTaskId === projectContext.commissionTaskId &&
+            selectedProjectContext.value?.stage === projectContext.stage
+          if (isCurrentProjectContext) {
+            projectConversationId.value = nextProjectConversationId
+          }
           if (!result.answer) {
             throw new Error('项目助手未返回回答内容')
           }
 
           completeGuideReply(flowId, assistantMessageId, result.answer, {
-            conversationId: projectConversationId.value,
+            conversationId: nextProjectConversationId,
             routeCard: undefined,
             suggestions: result.suggestions,
             projectContext,
@@ -1693,11 +1711,6 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     isHistoryPanelOpen.value = false
   }
 
-  // 打开或关闭历史对话浮层。
-  const toggleHistoryPanel = () => {
-    isHistoryPanelOpen.value = !isHistoryPanelOpen.value
-  }
-
   // 装载智能引导服务端会话消息，仅用于只读回放，不写入 localStorage。
   const loadExternalConversationMessages = (externalMessages: DemoMessage[]) => {
     cancelCurrentFlow({ persistHistory: false })
@@ -1705,6 +1718,10 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
       ...message,
       pending: false,
       thinkCollapsed: message.thinkCollapsed ?? true,
+      renderBlocks:
+        message.role === 'assistant'
+          ? splitMarkdownRenderBlocks(message.content)
+          : undefined,
     }))
     conversationId.value = ''
     projectConversationId.value = ''
@@ -1748,11 +1765,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     clearInputHint()
   }
 
-  // 删除项目附件时结束当前项目请求，并恢复全局问答模式。
   const removeProject = () => {
-    if (isBusy.value || isRecording.value || isAwaitingVoiceRecognitionResult.value) {
-      cancelCurrentFlow()
-    }
     selectedProjectContext.value = null
     projectConversationId.value = ''
     clearInputHint()
@@ -1815,7 +1828,6 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     stopVoiceInput,
     submitInput,
     suggestions,
-    toggleHistoryPanel,
     toggleThinkVisibility,
   }
 }

@@ -7,7 +7,7 @@
     centered
     @cancel="close"
   >
-    <div v-if="isLoading" class="history-modal__state">正在加载服务端记录...</div>
+    <div v-if="isLoading" class="history-modal__state">正在加载中，请耐心等待...</div>
     <div v-else-if="errorMessage" class="history-modal__state is-error">
       <span>{{ errorMessage }}</span>
       <button type="button" @click="loadConversations">重新加载</button>
@@ -34,7 +34,7 @@
       </button>
     </div>
 
-    <div v-if="isMessagesLoading" class="history-modal__message-state">正在加载会话消息...</div>
+    <div v-if="isMessagesLoading" class="history-modal__message-state">正在加载中，请耐心等待...</div>
     <div v-else-if="messagesError" class="history-modal__message-state is-error">
       <span>{{ messagesError }}</span>
       <button v-if="retryConversation" type="button" @click="loadMessages(retryConversation)">重试</button>
@@ -177,7 +177,7 @@ onBeforeUnmount(cancelRequests)
 </script>
 
 <style scoped lang="less">
-.history-modal__list { display: grid; gap: 9px; max-height: 58vh; overflow-y: auto; padding: 2px; }
+.history-modal__list { display: grid; gap: 9px; max-height: 58vh; overflow-y: auto; padding: 2px; scrollbar-gutter: stable; }
 .history-modal__item { display: grid; gap: 4px; width: 100%; padding: 11px 12px; border: 1px solid #dfe3ea; border-radius: 9px; background: #fff; color: #768197; text-align: left; cursor: pointer; transition: border-color .16s ease, background .16s ease; }
 .history-modal__item:hover, .history-modal__item.is-active { border-color: #a9c7fa; background: #f5f9ff; }
 .history-modal__title-row { display: flex; align-items: center; gap: 7px; min-width: 0; }

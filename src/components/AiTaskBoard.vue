@@ -34,7 +34,7 @@ const notifyDeveloping = () => antMessage.info(DIGITAL_HUMAN_DEVELOPMENT_NOTICE)
 </script>
 
 <style scoped lang="less">
-.workspace-view { flex: 1; min-height: 0; overflow-y: auto; padding: 27px 22px 18px; color: #20242c; background: #fafaf8; }
+.workspace-view { flex: 1; min-height: 0; overflow-y: auto; padding: 27px 22px 18px; color: #20242c; background: #fafaf8; scrollbar-gutter: stable; }
 .board-heading { display: flex; align-items: center; justify-content: space-between; margin: 0 0 44px; }
 .board-heading h2 { margin: 0; color: #20242c; font-size: 20px; font-weight: 700; letter-spacing: -.45px; }
 .board-heading :deep(.anticon) { color: #3c434d; font-size: 17px; transform: rotate(45deg); }

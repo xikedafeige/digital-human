@@ -1,6 +1,7 @@
 // 数字人消息内容工具，负责 think 分离、Markdown 渲染和纯文本提取。
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
+import type { MessageRenderBlock } from '@/types/avatar-types'
 
 const THINK_OPEN_TAG = '<think>'
 const THINK_CLOSE_TAG = '</think>'
@@ -8,12 +9,15 @@ const TABLE_DELIMITER_LINE_PATTERN =
   /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/
 const TABLE_ROW_LINE_PATTERN = /^\s*\|.+\|.*$/
 const FENCE_LINE_PATTERN = /^\s*(`{3,}|~{3,})/
+const ECHARTS_FENCE_BLOCK_PATTERN =
+  /(^|\n)([ \t]*)(`{3,}|~{3,})[ \t]*echarts[ \t]*\n([\s\S]*?)\n\2\3[ \t]*(?=\n|$)/gi
 
 export interface ParsedReplyContent {
   rawText: string
   bodyMarkdown: string
   thinkMarkdown: string
   speechText: string
+  renderBlocks: MessageRenderBlock[]
   hasThinkBlock: boolean
   thinkCompleted: boolean
 }
@@ -23,6 +27,72 @@ const normalizeLineEndings = (value: string) => value.replace(/\r\n/g, '\n')
 
 // 清理 Markdown 首尾空白，保留正文内部格式。
 const normalizeMarkdown = (value: string) => normalizeLineEndings(value).trim()
+
+const isJsonObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+const getEChartsOption = (raw: string) => {
+  try {
+    const option = JSON.parse(raw) as unknown
+    return isJsonObject(option) ? option : null
+  } catch {
+    return null
+  }
+}
+
+export const splitMarkdownRenderBlocks = (markdown: string): MessageRenderBlock[] => {
+  const normalizedMarkdown = normalizeLineEndings(markdown)
+  if (!normalizedMarkdown) {
+    return []
+  }
+
+  const blocks: MessageRenderBlock[] = []
+  let cursor = 0
+  ECHARTS_FENCE_BLOCK_PATTERN.lastIndex = 0
+  let match = ECHARTS_FENCE_BLOCK_PATTERN.exec(normalizedMarkdown)
+
+  while (match) {
+    const option = getEChartsOption(match[4].trim())
+    if (option) {
+      const startIndex = match.index + match[1].length
+      const markdownContent = normalizedMarkdown.slice(cursor, startIndex)
+      if (markdownContent.trim()) {
+        blocks.push({
+          type: 'markdown',
+          id: `markdown-${cursor}`,
+          content: markdownContent,
+        })
+      }
+
+      blocks.push({
+        type: 'echarts',
+        id: `echarts-${startIndex}`,
+        option,
+        raw: match[4].trim(),
+      })
+      cursor = match.index + match[0].length
+    }
+
+    match = ECHARTS_FENCE_BLOCK_PATTERN.exec(normalizedMarkdown)
+  }
+
+  const trailingMarkdown = normalizedMarkdown.slice(cursor)
+  if (trailingMarkdown.trim()) {
+    blocks.push({
+      type: 'markdown',
+      id: `markdown-${cursor}`,
+      content: trailingMarkdown,
+    })
+  }
+
+  return blocks
+}
+
+const removeEChartsFenceBlocks = (markdown: string) =>
+  normalizeLineEndings(markdown).replace(
+    ECHARTS_FENCE_BLOCK_PATTERN,
+    (_match, leadingLineBreak: string) => leadingLineBreak,
+  )
 
 const isTableDelimiterLine = (line: string) =>
   TABLE_DELIMITER_LINE_PATTERN.test(line)
@@ -245,6 +315,7 @@ export const parseReplyContent = (rawText: string): ParsedReplyContent => {
     bodyMarkdown,
     thinkMarkdown,
     speechText: markdownToPlainText(bodyMarkdown),
+    renderBlocks: splitMarkdownRenderBlocks(bodyMarkdown),
     hasThinkBlock,
     thinkCompleted: hasThinkBlock && !insideThink,
   }
@@ -270,7 +341,7 @@ export const renderMarkdownToHtml = (markdown: string) => {
 
 // 将 Markdown 转成纯文本，供 TTS 和状态摘要使用。
 export const markdownToPlainText = (markdown: string) => {
-  const safeHtml = renderMarkdownToHtml(markdown)
+  const safeHtml = renderMarkdownToHtml(removeEChartsFenceBlocks(markdown))
   if (!safeHtml) {
     return ''
   }

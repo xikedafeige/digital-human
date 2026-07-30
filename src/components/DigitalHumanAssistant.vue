@@ -6,12 +6,12 @@
 				<nav class="assistant-tabs" aria-label="数字人功能导航">
 					<a-button :class="{ 'is-active': activeTab === 'assistant' }" @click="activeTab = 'assistant'">智能助手</a-button>
 					<a-button :class="{ 'is-active': activeTab === 'todo' }" @click="activeTab = 'todo'">增强待办</a-button>
-					<a-button :class="{ 'is-active': activeTab === 'board' }" @click="activeTab = 'board'">AI任务看板</a-button>
+					<a-button :class="{ 'is-active': activeTab === 'board' }" @click="notifyDeveloping">AI任务看板</a-button>
 				</nav>
 
 				<div v-if="activeTab === 'assistant'" class="assistant-panel__actions">
 					<button type="button" class="assistant-panel__icon-button" :class="{ 'is-active': isHistoryPanelOpen }"
-						aria-label="历史对话" data-tooltip="历史对话" @click="handleHistoryToggle">
+						aria-label="历史对话" data-tooltip="历史对话" @click="handleHistoryOpen">
 						<svg viewBox="0 0 24 24" aria-hidden="true">
 							<path d="M3.5 12a8.5 8.5 0 1 0 2.4-5.9" />
 							<path d="M3.5 5.5v4h4" />
@@ -254,7 +254,7 @@
 							</a-button>
 							<span></span>
 							<a-button class="assistant-input__tool-button" type="text" aria-label="历史记录" data-tooltip="历史记录"
-								:class="{ 'is-active': isHistoryPanelOpen }" @click="handleHistoryToggle">
+						:class="{ 'is-active': isHistoryPanelOpen }" @click="handleHistoryOpen">
 								<HistoryOutlined />
 							</a-button>
 							<a-button class="assistant-input__tool-button" type="text" aria-label="近期项目" data-tooltip="近期项目"
@@ -379,7 +379,6 @@ const {
 	stopVoiceInput,
 	submitInput,
 	suggestions,
-	toggleHistoryPanel,
 	toggleThinkVisibility,
 } = useDigitalHumanDemo({
 	onOpenRecentProjects: () => {
@@ -701,8 +700,8 @@ const handleHistoryMessagesSelected = (
 	}
 }
 
-const handleHistoryToggle = () => {
-	toggleHistoryPanel()
+const handleHistoryOpen = () => {
+	isHistoryPanelOpen.value = true
 }
 
 const handleClearConversation = () => {
@@ -1366,6 +1365,7 @@ onBeforeUnmount(() => {
 	flex-direction: column;
 	gap: 10px;
 	overflow-y: auto;
+	scrollbar-gutter: stable;
 	padding-right: 6px;
 }
 

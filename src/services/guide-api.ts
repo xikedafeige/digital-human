@@ -6,6 +6,8 @@ import type {
 
 const GUIDE_API_BASE_URL = 'http://ffa56a44.natappfree.cc'
 const GUIDE_API_PREFIX = '/api/v1/guide'
+const GUIDE_USER_ID = '1696097681761374208'
+const GUIDE_REQUEST_ID = ''
 
 // 联调阶段由后端要求固定身份 Header；所有智能引导请求统一复用，不扩散到其他服务。
 const GUIDE_HEADERS: Record<string, string> = {
@@ -56,6 +58,10 @@ interface GuideProjectPayload {
   name?: unknown
   todoCategory?: unknown
   todo_category?: unknown
+  initiatorName?: unknown
+  initiator_name?: unknown
+  createTime?: unknown
+  create_time?: unknown
   initiateTime?: unknown
   initiate_time?: unknown
   urgencyLevel?: unknown
@@ -81,9 +87,13 @@ export interface GuideProjectCard {
   projectName: string
   taskType: number | null
   taskTypeName: string
+  todoCategory: string
   currentStageName: string
   time: string
   deadline: string
+  initiatorName: string
+  createTime: string
+  durationDesc: string
   statusText: string
   actions: string[]
   isUrgent: boolean
@@ -98,6 +108,13 @@ export interface GuideTodoProjectGroups {
   all: GuideProjectCard[]
   groups: Record<string, GuideProjectCard[]>
   total: number
+}
+
+export interface GuideRecentProjectsPage {
+  projects: GuideProjectCard[]
+  total: number
+  page: number
+  rows: number
 }
 
 export interface GuideConversationSummary {
@@ -243,6 +260,15 @@ const normalizeProject = (
     raw.processDefinitionName,
     raw.process_definition_name,
   )
+  const durationDesc = pickString(raw.durationDesc, raw.duration_desc)
+  const createTime = pickString(
+    raw.createTime,
+    raw.create_time,
+    raw.initiateTime,
+    raw.initiate_time,
+    raw.startDate,
+    raw.start_date,
+  )
 
   return {
     id,
@@ -251,17 +277,13 @@ const normalizeProject = (
     projectName,
     taskType,
     taskTypeName: stageName,
+    todoCategory: category,
     currentStageName,
-    time: pickString(
-      raw.durationDesc,
-      raw.duration_desc,
-      raw.startDate,
-      raw.start_date,
-      raw.initiateTime,
-      raw.initiate_time,
-      raw.deadline,
-    ),
+    time: durationDesc || createTime || pickString(raw.deadline),
     deadline: pickString(raw.deadline),
+    initiatorName: pickString(raw.initiatorName, raw.initiator_name, raw.startUserName),
+    createTime,
+    durationDesc,
     statusText,
     actions,
     isUrgent: source === 'todo'
@@ -303,10 +325,24 @@ const requestGuide = async <T>(
   return payload.data
 }
 
-export const fetchRecentProjects = async (signal?: AbortSignal) => {
-  const payload = await requestGuide<GuideProjectListPayload>('/projects/recent?page=1&rows=6', { signal })
+export const fetchRecentProjects = async (
+  page = 1,
+  rows = 6,
+  signal?: AbortSignal,
+): Promise<GuideRecentProjectsPage> => {
+  const payload = await requestGuide<GuideProjectListPayload>(
+    `/projects/recent?page=${encodeURIComponent(String(page))}&rows=${encodeURIComponent(String(rows))}`,
+    { signal },
+  )
   const projects = Array.isArray(payload?.projects) ? payload.projects : []
-  return projects.map((project, index) => normalizeProject(project, 'recent', index))
+  const normalizedProjects = projects.map((project, index) => normalizeProject(project, 'recent', index))
+
+  return {
+    projects: normalizedProjects,
+    total: pickNumber(payload?.total) ?? normalizedProjects.length,
+    page: pickNumber(payload?.page) ?? page,
+    rows: pickNumber(payload?.rows) ?? rows,
+  }
 }
 
 export const fetchTodoProjects = async (signal?: AbortSignal) => {
@@ -423,7 +459,9 @@ export const searchGuide = async (
     method: 'POST',
     body: {
       query,
-      conversation_id: conversationId,
+      user_id: GUIDE_USER_ID,
+      request_id: GUIDE_REQUEST_ID,
+      ...(conversationId ? { conversation_id: conversationId } : {}),
     },
     signal,
   })
@@ -491,7 +529,9 @@ export const streamGuideQa = async (
     },
     body: JSON.stringify({
       query,
-      conversation_id: conversationId,
+      user_id: GUIDE_USER_ID,
+      request_id: GUIDE_REQUEST_ID,
+      ...(conversationId ? { conversation_id: conversationId } : {}),
     }),
     signal,
   })
@@ -589,7 +629,9 @@ export const askGuideProject = async (
       commission_task_id: context.commissionTaskId,
       project_name: context.projectName,
       query,
-      conversation_id: conversationId,
+      user_id: GUIDE_USER_ID,
+      request_id: GUIDE_REQUEST_ID,
+      ...(conversationId ? { conversation_id: conversationId } : {}),
     },
     signal,
   })
@@ -644,7 +686,10 @@ const normalizeConversationMessage = (raw: Record<string, unknown>): GuideConver
 })
 
 export const fetchGuideConversations = async (signal?: AbortSignal) => {
-  const payload = await requestGuide<GuideConversationListPayload>('/assistant/conversations?limit=50', { signal })
+  const payload = await requestGuide<GuideConversationListPayload>(
+    `/assistant/conversations?user_id=${encodeURIComponent(GUIDE_USER_ID)}&conversation_type=&limit=50`,
+    { signal },
+  )
   return (payload?.conversations ?? []).map(normalizeConversation).filter((item) => item.id)
 }
 
@@ -653,7 +698,7 @@ export const fetchGuideConversationMessages = async (
   signal?: AbortSignal,
 ) => {
   const payload = await requestGuide<GuideConversationMessagesPayload>(
-    `/assistant/conversation/${encodeURIComponent(conversationId)}/messages`,
+    `/assistant/conversation/${encodeURIComponent(conversationId)}/messages?user_id=${encodeURIComponent(GUIDE_USER_ID)}`,
     { signal },
   )
   return (payload?.messages ?? [])

@@ -24,6 +24,19 @@ export interface GuideRouteCard {
   description?: string
 }
 
+export type MessageRenderBlock =
+  | {
+      type: 'markdown'
+      id: string
+      content: string
+    }
+  | {
+      type: 'echarts'
+      id: string
+      option: Record<string, unknown>
+      raw: string
+    }
+
 export interface DemoMessage {
   id: string
   role: MessageRole
@@ -36,6 +49,7 @@ export interface DemoMessage {
   thinkContent?: string
   thinkCollapsed?: boolean
   renderMode?: 'plain' | 'markdown'
+  renderBlocks?: MessageRenderBlock[]
   routeCard?: GuideRouteCard
   suggestions?: string[]
   projectContext?: GuideProjectContext
