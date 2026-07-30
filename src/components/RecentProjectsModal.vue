@@ -24,7 +24,7 @@
         </div>
         <span class="recent-project-card__badge" :class="{ 'is-urgent': project.isUrgent }">{{ project.statusText }}</span>
         <div class="recent-project-card__actions">
-          <button v-for="action in project.actions" :key="action" type="button" @click="notifyDeveloping">
+          <button v-for="action in project.actions" :key="action" type="button" @click="handleAction(project, action)">
             <component :is="actionIconMap[action]" />
             <span>{{ action }}</span>
           </button>
@@ -57,6 +57,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (event: 'update:open', value: boolean): void
+  (event: 'select-project', project: GuideProjectCard): void
 }>()
 
 const projects = ref<GuideProjectCard[]>([])
@@ -73,6 +74,15 @@ const actionIconMap: Record<string, unknown> = {
 
 const close = () => emit('update:open', false)
 const notifyDeveloping = () => antMessage.info(DIGITAL_HUMAN_DEVELOPMENT_NOTICE)
+const handleAction = (project: GuideProjectCard, action: string) => {
+  if (action === '提问') {
+    emit('select-project', project)
+    close()
+    return
+  }
+
+  notifyDeveloping()
+}
 
 const loadProjects = async () => {
   activeRequest?.abort()

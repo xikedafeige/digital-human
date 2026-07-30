@@ -53,87 +53,8 @@
 				</div>
 			</header>
 
-			<section v-if="isHistoryPanelOpen" class="assistant-history-panel" aria-label="历史对话">
-				<header class="assistant-history-panel__header">
-					<div>
-						<strong>历史对话</strong>
-						<span>{{ historyTotalCount }} 条记录</span>
-					</div>
-					<button type="button" class="assistant-history-panel__close" aria-label="关闭历史对话" @click="handleHistoryToggle">
-						<svg viewBox="0 0 24 24" aria-hidden="true">
-							<path d="M6 6l12 12" />
-							<path d="M18 6L6 18" />
-						</svg>
-					</button>
-				</header>
-
-				<div class="assistant-history-panel__content">
-					<section class="assistant-history-group" aria-label="服务端记录">
-						<header class="assistant-history-group__header">
-							<strong>服务端记录</strong>
-							<span>{{ remoteConversations.length }} 条</span>
-						</header>
-						<div v-if="remoteHistoryLoading" class="assistant-history-state">正在加载服务端记录...</div>
-						<div v-else-if="remoteHistoryError" class="assistant-history-state is-error">
-							<span>{{ remoteHistoryError }}</span>
-							<button type="button" @click="loadRemoteConversations">重试</button>
-						</div>
-						<div v-else-if="remoteConversations.length" class="assistant-history-panel__list">
-							<article v-for="history in remoteConversations" :key="`remote-${history.id}`"
-								class="assistant-history-item assistant-history-item--remote"
-								:class="{ 'is-active': history.id === activeRemoteHistoryId }">
-								<button type="button" class="assistant-history-item__main" @click="loadRemoteConversation(history)">
-									<div class="assistant-history-item__title-row">
-										<strong>{{ history.title }}</strong>
-										<span v-if="history.conversationType" class="assistant-history-item__type">
-											{{ history.conversationType === 'project' ? '项目助手' : '数字人' }}
-										</span>
-									</div>
-									<span>{{ formatGuideHistoryTime(history.updatedAt || history.lastMessageAt) }} · {{ history.messageCount }} 条消息</span>
-									<small v-if="history.lastMessagePreview">{{ history.lastMessagePreview }}</small>
-								</button>
-							</article>
-						</div>
-						<div v-else class="assistant-history-state">暂无服务端记录</div>
-						<div v-if="remoteMessagesLoading" class="assistant-history-state is-compact">正在加载会话消息...</div>
-						<div v-else-if="remoteMessagesError" class="assistant-history-state is-error is-compact">
-							<span>{{ remoteMessagesError }}</span>
-							<button v-if="remoteMessagesRetryTarget" type="button"
-								@click="loadRemoteConversation(remoteMessagesRetryTarget)">重试</button>
-						</div>
-					</section>
-
-					<section class="assistant-history-group" aria-label="本地记录">
-						<header class="assistant-history-group__header">
-							<strong>本地记录</strong>
-							<span>{{ conversationHistories.length }} 条</span>
-						</header>
-						<div v-if="conversationHistories.length" class="assistant-history-panel__list">
-							<article v-for="history in conversationHistories" :key="history.id" class="assistant-history-item"
-								:class="{ 'is-active': history.id === currentHistoryId }">
-								<button type="button" class="assistant-history-item__main" @click="handleLocalHistorySelect(history.id)">
-									<strong>{{ history.title }}</strong>
-									<span>{{ formatHistoryTime(history.updatedAt) }} · {{ getHistoryMessageCount(history.messages) }}
-										条消息</span>
-								</button>
-								<button type="button" class="assistant-history-item__delete" aria-label="删除历史对话" title="删除"
-									@click.stop="deleteConversationHistory(history.id)">
-									<svg viewBox="0 0 24 24" aria-hidden="true">
-										<path d="M4 7h16" />
-										<path d="M9 7V5h6v2" />
-										<path d="M7 7l1 13h8l1-13" />
-										<path d="M10 11v5" />
-										<path d="M14 11v5" />
-									</svg>
-								</button>
-							</article>
-						</div>
-						<div v-else class="assistant-history-state">暂无本地记录</div>
-					</section>
-				</div>
-			</section>
-
-			<EnhancedTodoPanel v-show="activeTab === 'todo'" :active="activeTab === 'todo'" :aria-hidden="activeTab !== 'todo'" />
+			<EnhancedTodoPanel v-show="activeTab === 'todo'" :active="activeTab === 'todo'" :aria-hidden="activeTab !== 'todo'"
+				@select-project="handleProjectSelected" />
 			<AiTaskBoard v-show="activeTab === 'board'" :aria-hidden="activeTab !== 'board'" />
 			<div v-show="activeTab === 'assistant'" class="assistant-panel__body" :aria-hidden="activeTab !== 'assistant'">
 				<div class="assistant-panel__stage-shell">
@@ -190,6 +111,23 @@
 								<p v-else-if="message.content" class="assistant-message__plain">
 									{{ message.content }}
 								</p>
+
+								<button v-if="message.routeCard" type="button" class="assistant-message__route-card"
+									@click="navigateToRoute(message.routeCard.url)">
+									<span>
+										<strong>{{ message.routeCard.title }}</strong>
+										<small>{{ message.routeCard.url }}</small>
+									</span>
+									<ArrowRightOutlined />
+								</button>
+
+								<section v-if="message.suggestions?.length" class="assistant-message__suggestions"
+									aria-label="建议追问">
+									<strong>建议追问</strong>
+									<ul>
+										<li v-for="suggestion in message.suggestions" :key="suggestion">{{ suggestion }}</li>
+									</ul>
+								</section>
 
 								<div v-if="canShowMessageActions(message)" class="assistant-message__actions" aria-label="消息操作">
 									<button type="button" class="assistant-message__action-button"
@@ -267,6 +205,17 @@
 
 				<footer class="assistant-input">
 					<div class="assistant-input__composer">
+						<div v-if="selectedProjectContext" class="assistant-input__attachment" aria-label="当前项目附件">
+							<span class="assistant-input__attachment-icon"><PaperClipOutlined /></span>
+							<span class="assistant-input__attachment-content">
+								<strong>针对绩效任务提问</strong>
+								<small>{{ selectedProjectContext.projectName || '未知任务' }}</small>
+							</span>
+							<button type="button" aria-label="删除项目附件" data-tooltip="删除项目附件" @click="removeProject">
+								<CloseOutlined />
+							</button>
+						</div>
+
 						<div class="assistant-input__toolbar">
 							<a-dropdown placement="topLeft" :trigger="['click']" overlay-class-name="assistant-agent-dropdown">
 								<button type="button" class="assistant-agent-trigger" aria-label="选择智能体">
@@ -345,7 +294,8 @@
 				</footer>
 			</div>
 		</div>
-		<RecentProjectsModal v-model:open="isRecentProjectsOpen" />
+		<RecentProjectsModal v-model:open="isRecentProjectsOpen" @select-project="handleProjectSelected" />
+		<ConversationHistoryModal v-model:open="isHistoryPanelOpen" @select-messages="handleHistoryMessagesSelected" />
 	</section>
 </template>
 
@@ -356,14 +306,17 @@ import {
 	AlertOutlined,
 	ApartmentOutlined,
 	AppstoreOutlined,
+	ArrowRightOutlined,
 	AudioOutlined,
 	BankOutlined,
+	CloseOutlined,
 	CommentOutlined,
 	DownOutlined,
 	FolderOpenOutlined,
 	FundOutlined,
 	HeartOutlined,
 	HistoryOutlined,
+	PaperClipOutlined,
 	ProjectOutlined,
 	RadarChartOutlined,
 	ReadOutlined,
@@ -371,17 +324,18 @@ import {
 	StarFilled,
 	StopOutlined,
 } from '@ant-design/icons-vue'
-import type { ConversationHistory, DemoMessage } from '@/types/avatar-types'
+import type { DemoMessage } from '@/types/avatar-types'
 import { markdownToPlainText, renderMarkdownToHtml } from '@/utils/message-content'
 import { useDigitalHumanDemo } from '@/hooks/useDigitalHumanDemo'
 import VideoDigitalHumanStage from './VideoDigitalHumanStage.vue'
 import EnhancedTodoPanel from './EnhancedTodoPanel.vue'
 import AiTaskBoard from './AiTaskBoard.vue'
+import ConversationHistoryModal from './ConversationHistoryModal.vue'
 import RecentProjectsModal from './RecentProjectsModal.vue'
 import {
-	fetchGuideConversationMessages,
-	fetchGuideConversations,
+	type GuideConversationMessage,
 	type GuideConversationSummary,
+	type GuideProjectCard,
 } from '@/services/guide-api'
 import {
 	DIGITAL_HUMAN_AGENTS,
@@ -390,11 +344,10 @@ import {
 	type DigitalHumanAgentOption,
 } from '@/config/demo-config'
 
+const isRecentProjectsOpen = ref(false)
 const {
+	attachProject,
 	clearConversation,
-	conversationHistories,
-	currentHistoryId,
-	deleteConversationHistory,
 	handleSpeechComplete,
 	handleSpeechProgress,
 	hasInput,
@@ -405,11 +358,12 @@ const {
 	isHistoryPanelOpen,
 	isRecording,
 	isSpeechSynthesizing,
-	loadConversationHistory,
 	loadExternalConversationMessages,
 	messages,
 	readMessageAloud,
 	regenerateAssistantMessage,
+	removeProject,
+	selectedProjectContext,
 	sendText,
 	showInterruptButton,
 	speechCompletedMessageIds,
@@ -427,7 +381,11 @@ const {
 	suggestions,
 	toggleHistoryPanel,
 	toggleThinkVisibility,
-} = useDigitalHumanDemo()
+} = useDigitalHumanDemo({
+	onOpenRecentProjects: () => {
+		isRecentProjectsOpen.value = true
+	},
+})
 
 const messagesRef = ref<HTMLElement | null>(null)
 type AssistantTab = 'assistant' | 'todo' | 'board'
@@ -453,16 +411,6 @@ const selectAgent = (agent: DigitalHumanAgentOption) => {
 	}
 }
 const isWidePanel = ref(false)
-const isRecentProjectsOpen = ref(false)
-const remoteConversations = ref<GuideConversationSummary[]>([])
-const remoteHistoryLoading = ref(false)
-const remoteHistoryError = ref('')
-const activeRemoteHistoryId = ref('')
-const remoteMessagesLoading = ref(false)
-const remoteMessagesError = ref('')
-const remoteMessagesRetryTarget = ref<GuideConversationSummary | null>(null)
-let remoteHistoryRequest: AbortController | null = null
-let remoteMessagesRequest: AbortController | null = null
 const shouldSkipNextMessageAutoScroll = ref(false)
 const copiedMessageId = ref('')
 const messageFeedbackMap = ref<Record<string, MessageFeedback | undefined>>({})
@@ -476,9 +424,6 @@ const messageActionStateTimers = new Map<string, number>()
 const notifyDeveloping = () => antMessage.info(DIGITAL_HUMAN_DEVELOPMENT_NOTICE)
 const showSuggestions = computed(() =>
 	suggestions.value.length > 0 && !messages.value.some((message) => message.role === 'user'),
-)
-const historyTotalCount = computed(() =>
-	conversationHistories.value.length + remoteConversations.value.length,
 )
 
 const roleLabelMap: Record<DemoMessage['role'], string> = {
@@ -720,157 +665,67 @@ const formatTime = (timestamp: number) =>
 		minute: '2-digit',
 	})
 
-// 历史列表使用更紧凑的日期展示，今天只显示时间，非今天显示月日。
-const formatHistoryTime = (timestamp: number) => {
-	const date = new Date(timestamp)
-	const today = new Date()
-	const isToday = date.toDateString() === today.toDateString()
-
-	if (isToday) {
-		return date.toLocaleTimeString('zh-CN', {
-			hour: '2-digit',
-			minute: '2-digit',
-		})
-	}
-
-	return date.toLocaleDateString('zh-CN', {
-		month: '2-digit',
-		day: '2-digit',
-	})
-}
-
-// 统计历史中真正参与对话的用户和 assistant 消息数量。
-const getHistoryMessageCount = (messages: ConversationHistory['messages']) =>
-	messages.filter((message) => message.role !== 'system').length
-
 const parseGuideHistoryTimestamp = (value: string, fallback = Date.now()) => {
 	const normalized = value.trim().replace(' ', 'T')
 	const timestamp = normalized ? Date.parse(normalized) : Number.NaN
 	return Number.isFinite(timestamp) ? timestamp : fallback
 }
 
-const formatGuideHistoryTime = (value: string) => {
-	if (!value) {
-		return '时间未知'
-	}
+const handleHistoryMessagesSelected = (
+	remoteMessages: GuideConversationMessage[],
+	history: GuideConversationSummary,
+) => {
+	const replayMessages = remoteMessages
+		.filter((message) => {
+			const role = message.role.toUpperCase()
+			return (role === 'USER' || role === 'ASSISTANT') && Boolean(message.content.trim())
+		})
+		.map<DemoMessage>((message, index) => {
+			const isUserMessage = message.role.toUpperCase() === 'USER'
+			const role: DemoMessage['role'] = isUserMessage ? 'user' : 'assistant'
+			return {
+				id: message.id || `${history.id}-${index}`,
+				role,
+				content: message.content,
+				timestamp: parseGuideHistoryTimestamp(message.createdAt, Date.now() + index),
+				pending: false,
+				source: 'text',
+				engine: 'guide',
+				renderMode: role === 'user' ? 'plain' : 'markdown',
+				thinkCollapsed: true,
+			}
+		})
 
-	const timestamp = parseGuideHistoryTimestamp(value, Number.NaN)
-	return Number.isFinite(timestamp) ? formatHistoryTime(timestamp) : value
-}
-
-const abortRemoteHistoryRequests = () => {
-	remoteHistoryRequest?.abort()
-	remoteHistoryRequest = null
-	remoteMessagesRequest?.abort()
-	remoteMessagesRequest = null
-	remoteHistoryLoading.value = false
-	remoteMessagesLoading.value = false
-}
-
-const loadRemoteConversations = async () => {
-	remoteHistoryRequest?.abort()
-	const controller = new AbortController()
-	remoteHistoryRequest = controller
-	remoteHistoryLoading.value = true
-	remoteHistoryError.value = ''
-	remoteMessagesError.value = ''
-	remoteMessagesRetryTarget.value = null
-
-	try {
-		const conversations = await fetchGuideConversations(controller.signal)
-		if (!controller.signal.aborted) {
-			remoteConversations.value = conversations
-		}
-	} catch (error) {
-		if (!controller.signal.aborted) {
-			remoteHistoryError.value = error instanceof Error ? error.message : '服务端历史加载失败'
-		}
-	} finally {
-		if (remoteHistoryRequest === controller) {
-			remoteHistoryRequest = null
-			remoteHistoryLoading.value = false
-		}
-	}
-}
-
-const loadRemoteConversation = async (history: GuideConversationSummary) => {
-	remoteMessagesRequest?.abort()
-	const controller = new AbortController()
-	remoteMessagesRequest = controller
-	activeRemoteHistoryId.value = history.id
-	remoteMessagesLoading.value = true
-	remoteMessagesError.value = ''
-	remoteMessagesRetryTarget.value = history
-
-	try {
-		const remoteMessages = await fetchGuideConversationMessages(history.id, controller.signal)
-		if (controller.signal.aborted) {
-			return
-		}
-
-		const replayMessages: DemoMessage[] = remoteMessages
-			.filter((message) => {
-				const role = message.role.toUpperCase()
-				return (role === 'USER' || role === 'ASSISTANT') && Boolean(message.content.trim())
-			})
-			.map<DemoMessage>((message, index) => {
-				const isUserMessage = message.role.toUpperCase() === 'USER'
-				const role: DemoMessage['role'] = isUserMessage ? 'user' : 'assistant'
-				return {
-					id: message.id || `${history.id}-${index}`,
-					role,
-					content: message.content,
-					timestamp: parseGuideHistoryTimestamp(message.createdAt, Date.now() + index),
-					pending: false,
-					source: 'text',
-					engine: 'dify',
-					renderMode: role === 'user' ? 'plain' : 'markdown',
-					thinkCollapsed: true,
-				}
-			})
-
-		if (!replayMessages.length) {
-			throw new Error('该会话暂无可展示的消息')
-		}
-
+	if (replayMessages.length) {
 		loadExternalConversationMessages(replayMessages)
-	} catch (error) {
-		if (!controller.signal.aborted) {
-			remoteMessagesError.value = error instanceof Error ? error.message : '会话消息加载失败'
-		}
-	} finally {
-		if (remoteMessagesRequest === controller) {
-			remoteMessagesRequest = null
-			remoteMessagesLoading.value = false
-		}
 	}
-}
-
-const handleLocalHistorySelect = (historyId: string) => {
-	remoteMessagesRequest?.abort()
-	remoteMessagesRequest = null
-	remoteMessagesLoading.value = false
-	remoteMessagesError.value = ''
-	remoteMessagesRetryTarget.value = null
-	activeRemoteHistoryId.value = ''
-	loadConversationHistory(historyId)
 }
 
 const handleHistoryToggle = () => {
-	const shouldOpen = !isHistoryPanelOpen.value
 	toggleHistoryPanel()
-
-	if (shouldOpen) {
-		void loadRemoteConversations()
-		return
-	}
-
-	abortRemoteHistoryRequests()
 }
 
 const handleClearConversation = () => {
-	abortRemoteHistoryRequests()
 	clearConversation()
+}
+
+const handleProjectSelected = (project: GuideProjectCard) => {
+	attachProject(project)
+	activeTab.value = 'assistant'
+	isRecentProjectsOpen.value = false
+}
+
+const navigateToRoute = (url: string) => {
+	try {
+		const targetUrl = new URL(url, window.location.origin)
+		if (targetUrl.protocol === 'http:' || targetUrl.protocol === 'https:') {
+			window.location.assign(targetUrl.href)
+			return
+		}
+		antMessage.warning('当前路由地址不可用')
+	} catch {
+		antMessage.warning('当前路由地址不可用')
+	}
 }
 
 const scrollMessagesToBottom = () => {
@@ -904,8 +759,6 @@ watch(
 )
 
 onBeforeUnmount(() => {
-	abortRemoteHistoryRequests()
-
 	if (copiedMessageTimer !== null) {
 		window.clearTimeout(copiedMessageTimer)
 	}
@@ -2232,6 +2085,73 @@ onBeforeUnmount(() => {
 	box-shadow: 0 0 0 2px rgba(82, 126, 255, .06);
 }
 
+.assistant-input__attachment {
+	display: grid;
+	grid-template-columns: 32px minmax(0, 1fr) 26px;
+	align-items: center;
+	gap: 9px;
+	margin: 10px 12px 0;
+	padding: 8px 9px;
+	border: 1px solid #dce6f5;
+	border-radius: 10px;
+	background: #f5f8fe;
+}
+
+.assistant-input__attachment-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	border-radius: 8px;
+	background: #e8f1ff;
+	color: #4f7fea;
+	font-size: 16px;
+}
+
+.assistant-input__attachment-content {
+	display: grid;
+	min-width: 0;
+}
+
+.assistant-input__attachment-content strong,
+.assistant-input__attachment-content small {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.assistant-input__attachment-content strong {
+	color: #27364f;
+	font-size: 12px;
+	line-height: 18px;
+}
+
+.assistant-input__attachment-content small {
+	color: #7d8798;
+	font-size: 11px;
+	line-height: 17px;
+}
+
+.assistant-input__attachment button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	border: 0;
+	border-radius: 7px;
+	background: transparent;
+	color: #8c95a5;
+	cursor: pointer;
+}
+
+.assistant-input__attachment button:hover {
+	background: #e8eef8;
+	color: #4f6381;
+}
+
 .assistant-input__toolbar {
 	display: flex;
 	align-items: center;
@@ -2418,6 +2338,75 @@ onBeforeUnmount(() => {
 
 .assistant-message.is-system {
 	display: none;
+}
+
+.assistant-message__route-card {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	width: 100%;
+	margin-top: 10px;
+	padding: 11px 12px;
+	border: 1px solid #d8e5f8;
+	border-radius: 10px;
+	background: #f4f8ff;
+	color: #3d6fc6;
+	text-align: left;
+	cursor: pointer;
+}
+
+.assistant-message__route-card > span {
+	display: grid;
+	min-width: 0;
+	gap: 2px;
+}
+
+.assistant-message__route-card strong,
+.assistant-message__route-card small {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.assistant-message__route-card strong {
+	color: #315a9f;
+	font-size: 12px;
+	line-height: 18px;
+}
+
+.assistant-message__route-card small {
+	color: #7b8da9;
+	font-size: 10px;
+	line-height: 16px;
+}
+
+.assistant-message__route-card :deep(.anticon) {
+	flex: none;
+	font-size: 14px;
+}
+
+.assistant-message__suggestions {
+	margin-top: 10px;
+	padding: 10px 12px;
+	border-radius: 10px;
+	background: #f7f8fb;
+}
+
+.assistant-message__suggestions > strong {
+	color: #68758a;
+	font-size: 11px;
+	line-height: 17px;
+}
+
+.assistant-message__suggestions ul {
+	display: grid;
+	gap: 5px;
+	margin: 6px 0 0;
+	padding-left: 17px;
+	color: #4e596a;
+	font-size: 11px;
+	line-height: 18px;
 }
 
 :global(.assistant-agent-dropdown) {

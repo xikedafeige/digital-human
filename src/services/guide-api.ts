@@ -1,4 +1,8 @@
 // 智能引导接口客户端，集中管理联调地址、请求头和响应数据规范化。
+import type {
+  GuideProjectContext,
+  GuideProjectStage,
+} from '@/types/avatar-types'
 
 const GUIDE_API_BASE_URL = 'http://ffa56a44.natappfree.cc'
 const GUIDE_API_PREFIX = '/api/v1/guide'
@@ -44,11 +48,27 @@ interface GuideProjectPayload {
   cardActions?: unknown
   bpmTaskId?: unknown
   bpm_task_id?: unknown
+  id?: unknown
+  businessKey?: unknown
+  business_key?: unknown
+  flowName?: unknown
+  flow_name?: unknown
+  name?: unknown
+  todoCategory?: unknown
+  todo_category?: unknown
+  initiateTime?: unknown
+  initiate_time?: unknown
+  urgencyLevel?: unknown
+  urgency_level?: unknown
+  formUrl?: unknown
+  form_url?: unknown
+  businessPattern?: unknown
+  business_pattern?: unknown
   [key: string]: unknown
 }
 
 interface GuideProjectListPayload {
-  projects?: GuideProjectPayload[]
+  projects?: GuideProjectPayload[] | Record<string, GuideProjectPayload[]>
   total?: unknown
   page?: unknown
   rows?: unknown
@@ -56,6 +76,7 @@ interface GuideProjectListPayload {
 
 export interface GuideProjectCard {
   id: string
+  todoId: string
   title: string
   projectName: string
   taskType: number | null
@@ -68,7 +89,15 @@ export interface GuideProjectCard {
   isUrgent: boolean
   source: 'recent' | 'todo'
   commissionTaskId: string
+  stage: GuideProjectStage | ''
+  stageName: string
   raw: GuideProjectPayload
+}
+
+export interface GuideTodoProjectGroups {
+  all: GuideProjectCard[]
+  groups: Record<string, GuideProjectCard[]>
+  total: number
 }
 
 export interface GuideConversationSummary {
@@ -135,54 +164,130 @@ const ACTION_LABELS: Record<string, string> = {
 
 const DEFAULT_TODO_ACTIONS = ['提问', '写报告', '审核', '问数']
 
+const TODO_STAGE_MAP: Record<string, GuideProjectStage> = {
+  绩效目标申报: 'target_declaration',
+  绩效目标: 'target_declaration',
+  事前: 'pre_evaluation',
+  事中: 'mid_monitoring',
+  事后: 'post_evaluation',
+}
+
+const TASK_TYPE_STAGE_MAP: Record<number, GuideProjectStage> = {
+  3: 'target_declaration',
+  1: 'pre_evaluation',
+  5: 'mid_monitoring',
+  2: 'post_evaluation',
+}
+
+const resolveProjectStage = (
+  taskType: number | null,
+  category: string,
+): GuideProjectStage | '' =>
+  TODO_STAGE_MAP[category] ??
+  (taskType === null ? '' : TASK_TYPE_STAGE_MAP[taskType] ?? '')
+
 const normalizeProject = (
   raw: GuideProjectPayload,
   source: GuideProjectCard['source'],
   index: number,
 ): GuideProjectCard => {
   const taskType = pickNumber(raw.taskType, raw.task_type)
-  const statusText = pickString(raw.statusText, raw.status_text, raw.status, '待处理')
+  const category = pickString(
+    raw.todoCategory,
+    raw.todo_category,
+    raw.taskTypeName,
+    raw.task_type_name,
+  )
+  const stage = resolveProjectStage(taskType, category)
+  const stageName = category || pickString(raw.currentStageName, raw.current_stage_name)
+  const urgencyLevel = pickNumber(raw.urgencyLevel, raw.urgency_level)
+  const statusText =
+    source === 'todo'
+      ? urgencyLevel !== null && urgencyLevel >= 4
+        ? '紧急'
+        : '普通'
+      : pickString(raw.statusText, raw.status_text, raw.status, '进行中')
   const rawActions = pickRecordArray(raw.cardActions)
   const actions = rawActions.length
     ? rawActions.map((action) => ACTION_LABELS[action] ?? action).filter(Boolean)
     : DEFAULT_TODO_ACTIONS
-  const title = pickString(raw.title, raw.projectName, raw.project_name, `待办项目 ${index + 1}`)
-  const commissionTaskId = pickString(raw.commissionTaskId, raw.commission_task_id)
+  const projectName = pickString(
+    raw.projectName,
+    raw.project_name,
+    raw.flowName,
+    raw.flow_name,
+    raw.title,
+    `未知任务 ${index + 1}`,
+  )
+  const title = pickString(raw.title, raw.flowName, raw.flow_name, projectName)
+  const commissionTaskId = pickString(
+    raw.commissionTaskId,
+    raw.commission_task_id,
+    raw.businessKey,
+    raw.business_key,
+  )
   const id = pickString(
     raw.todoId,
     raw.todo_id,
     raw.bpmTaskId,
     raw.bpm_task_id,
+    raw.id,
     commissionTaskId,
     `${source}-${index}`,
+  )
+  const todoId = pickString(raw.todoId, raw.todo_id, raw.id, raw.bpmTaskId, raw.bpm_task_id, id)
+  const currentStageName = pickString(
+    raw.currentStageName,
+    raw.current_stage_name,
+    raw.name,
+    raw.processDefinitionName,
+    raw.process_definition_name,
   )
 
   return {
     id,
+    todoId,
     title,
-    projectName: pickString(raw.projectName, raw.project_name, title),
+    projectName,
     taskType,
-    taskTypeName: pickString(raw.taskTypeName, raw.task_type_name),
-    currentStageName: pickString(raw.currentStageName, raw.current_stage_name),
-    time: pickString(raw.durationDesc, raw.duration_desc, raw.startDate, raw.start_date, raw.deadline),
+    taskTypeName: stageName,
+    currentStageName,
+    time: pickString(
+      raw.durationDesc,
+      raw.duration_desc,
+      raw.startDate,
+      raw.start_date,
+      raw.initiateTime,
+      raw.initiate_time,
+      raw.deadline,
+    ),
     deadline: pickString(raw.deadline),
     statusText,
     actions,
-    isUrgent: /紧急|逾期|urgent|overdue/i.test(statusText),
+    isUrgent: source === 'todo'
+      ? urgencyLevel !== null && urgencyLevel >= 4
+      : /紧急|逾期|urgent|overdue/i.test(statusText),
     source,
     commissionTaskId,
+    stage,
+    stageName,
     raw,
   }
 }
 
-const requestGuide = async <T>(path: string, signal?: AbortSignal): Promise<T | null> => {
+const requestGuide = async <T>(
+  path: string,
+  options: { method?: 'GET' | 'POST'; body?: unknown; signal?: AbortSignal } = {},
+): Promise<T | null> => {
   const response = await fetch(`${GUIDE_API_BASE_URL}${GUIDE_API_PREFIX}${path}`, {
-    method: 'GET',
+    method: options.method ?? 'GET',
     headers: {
       Accept: 'application/json',
+      ...(options.method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
       ...GUIDE_HEADERS,
     },
-    signal,
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    signal: options.signal,
   })
 
   const payload = (await response.json().catch(() => null)) as GuideResponse<T> | null
@@ -199,13 +304,311 @@ const requestGuide = async <T>(path: string, signal?: AbortSignal): Promise<T | 
 }
 
 export const fetchRecentProjects = async (signal?: AbortSignal) => {
-  const payload = await requestGuide<GuideProjectListPayload>('/projects/recent?page=1&rows=6', signal)
-  return (payload?.projects ?? []).map((project, index) => normalizeProject(project, 'recent', index))
+  const payload = await requestGuide<GuideProjectListPayload>('/projects/recent?page=1&rows=6', { signal })
+  const projects = Array.isArray(payload?.projects) ? payload.projects : []
+  return projects.map((project, index) => normalizeProject(project, 'recent', index))
 }
 
 export const fetchTodoProjects = async (signal?: AbortSignal) => {
-  const payload = await requestGuide<GuideProjectListPayload>('/projects/todos?page=1&rows=20', signal)
-  return (payload?.projects ?? []).map((project, index) => normalizeProject(project, 'todo', index))
+  const payload = await requestGuide<GuideProjectListPayload>('/projects/todos?page=1&rows=20', { signal })
+  const rawProjects = payload?.projects
+  const groups: Record<string, GuideProjectCard[]> = {}
+
+  if (Array.isArray(rawProjects)) {
+    groups['全部'] = rawProjects.map((project, index) => normalizeProject(project, 'todo', index))
+  } else if (rawProjects && typeof rawProjects === 'object') {
+    Object.entries(rawProjects).forEach(([category, projects]) => {
+      groups[category] = projects.map((project, index) => normalizeProject(project, 'todo', index))
+    })
+  }
+
+  const all = groups['全部'] ?? Object.entries(groups)
+    .filter(([category]) => category !== '全部')
+    .flatMap(([, projects]) => projects)
+  const dedupedAll = Array.from(new Map(all.map((project) => [project.id, project])).values())
+
+  return {
+    all: dedupedAll,
+    groups,
+    total: Number(payload?.total) || dedupedAll.length,
+  } satisfies GuideTodoProjectGroups
+}
+
+export interface GuideSearchRoute {
+  id: string
+  title: string
+  url: string
+  params: Record<string, unknown>
+}
+
+export interface GuideSearchResult {
+  intent: string
+  subIntent: string
+  confidence: number | null
+  description: string
+  action: string
+  conversationId: string
+  guideStage: string
+  route: GuideSearchRoute | null
+}
+
+export interface GuideQaStreamResult {
+  answer: string
+  conversationId: string
+  requestId: string
+  source: string
+}
+
+export interface GuideProjectAnswer {
+  stage: string
+  stageName: string
+  commissionTaskId: string
+  answer: string
+  references: unknown[]
+  suggestions: string[]
+  source: string
+  conversationId: string
+}
+
+interface GuideQaStreamHandlers {
+  onText?: (answer: string, chunk: string) => void
+  onConversationId?: (conversationId: string) => void
+}
+
+interface GuideSsePayload {
+  conversation_id?: unknown
+  conversationId?: unknown
+  request_id?: unknown
+  requestId?: unknown
+  content?: unknown
+  answer?: unknown
+  source?: unknown
+  message?: unknown
+  data?: Record<string, unknown> | null
+}
+
+const normalizeSearchResult = (raw: Record<string, unknown>): GuideSearchResult => {
+  const rawRoute = raw.route && typeof raw.route === 'object'
+    ? raw.route as Record<string, unknown>
+    : null
+  const rawParams = rawRoute?.params && typeof rawRoute.params === 'object'
+    ? rawRoute.params as Record<string, unknown>
+    : {}
+
+  return {
+    intent: pickString(raw.intent),
+    subIntent: pickString(raw.sub_intent, raw.subIntent),
+    confidence: pickNumber(raw.confidence),
+    description: pickString(raw.description),
+    action: pickString(raw.action),
+    conversationId: pickString(raw.conversation_id, raw.conversationId),
+    guideStage: pickString(raw.guide_stage, raw.guideStage),
+    route: rawRoute
+      ? {
+          id: pickString(rawRoute.id),
+          title: pickString(rawRoute.title),
+          url: pickString(rawRoute.url),
+          params: rawParams,
+        }
+      : null,
+  }
+}
+
+export const searchGuide = async (
+  query: string,
+  conversationId = '',
+  signal?: AbortSignal,
+) => {
+  const payload = await requestGuide<Record<string, unknown>>('/search', {
+    method: 'POST',
+    body: {
+      query,
+      conversation_id: conversationId,
+    },
+    signal,
+  })
+
+  return normalizeSearchResult(payload ?? {})
+}
+
+const extractSseEvents = (buffer: string) => {
+  const chunks = buffer.replace(/\r\n/g, '\n').split('\n\n')
+  const pendingBuffer = chunks.pop() ?? ''
+
+  return {
+    events: chunks.map((chunk) => {
+      let event = 'message'
+      const dataLines: string[] = []
+
+      chunk.split('\n').forEach((line) => {
+        if (line.startsWith('event:')) {
+          event = line.slice(6).trim()
+        } else if (line.startsWith('data:')) {
+          dataLines.push(line.slice(5).trimStart())
+        }
+      })
+
+      return {
+        event,
+        data: dataLines.join('\n').trim(),
+      }
+    }).filter((item) => item.data),
+    pendingBuffer,
+  }
+}
+
+const parseSsePayload = (rawData: string) => {
+  if (!rawData || rawData === '[DONE]') {
+    return null
+  }
+
+  try {
+    return JSON.parse(rawData) as GuideSsePayload
+  } catch {
+    return null
+  }
+}
+
+const pickSseString = (payload: GuideSsePayload, ...keys: string[]) => {
+  const nested = payload.data ?? {}
+  return pickString(
+    ...keys.flatMap((key) => [payload[key as keyof GuideSsePayload], nested[key]]),
+  )
+}
+
+export const streamGuideQa = async (
+  query: string,
+  conversationId = '',
+  handlers: GuideQaStreamHandlers = {},
+  signal?: AbortSignal,
+): Promise<GuideQaStreamResult> => {
+  const response = await fetch(`${GUIDE_API_BASE_URL}${GUIDE_API_PREFIX}/qa/stream`, {
+    method: 'POST',
+    headers: {
+      Accept: 'text/event-stream',
+      'Content-Type': 'application/json',
+      ...GUIDE_HEADERS,
+    },
+    body: JSON.stringify({
+      query,
+      conversation_id: conversationId,
+    }),
+    signal,
+  })
+
+  if (!response.ok) {
+    const responseText = await response.text().catch(() => '')
+    throw new Error(responseText || `智能引导问答请求失败（HTTP ${response.status}）`)
+  }
+
+  if (!response.body) {
+    throw new Error('智能引导问答未返回流式内容')
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let answer = ''
+  let latestConversationId = conversationId
+  let requestId = ''
+  let source = ''
+
+  const applyEvent = (event: string, rawData: string) => {
+    const payload = parseSsePayload(rawData)
+    if (!payload) {
+      return
+    }
+
+    const nextConversationId = pickSseString(payload, 'conversation_id', 'conversationId')
+    if (nextConversationId) {
+      latestConversationId = nextConversationId
+      handlers.onConversationId?.(nextConversationId)
+    }
+
+    if (event === 'error') {
+      throw new Error(pickSseString(payload, 'message') || '智能引导问答返回异常')
+    }
+
+    if (event === 'delta') {
+      const chunk = pickSseString(payload, 'content')
+      if (chunk) {
+        answer += chunk
+        handlers.onText?.(answer, chunk)
+      }
+      return
+    }
+
+    if (event === 'done') {
+      const finalAnswer = pickSseString(payload, 'answer')
+      if (finalAnswer && finalAnswer !== answer) {
+        answer = finalAnswer
+        handlers.onText?.(answer, finalAnswer)
+      }
+      requestId = pickSseString(payload, 'request_id', 'requestId') || requestId
+      source = pickSseString(payload, 'source') || source
+    }
+  }
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) {
+      break
+    }
+
+    buffer += decoder.decode(value, { stream: true })
+    const parsed = extractSseEvents(buffer)
+    buffer = parsed.pendingBuffer
+    parsed.events.forEach(({ event, data }) => applyEvent(event, data))
+  }
+
+  buffer += decoder.decode()
+  extractSseEvents(`${buffer}\n\n`).events.forEach(({ event, data }) => applyEvent(event, data))
+
+  if (!answer.trim()) {
+    throw new Error('智能引导问答返回内容为空')
+  }
+
+  return {
+    answer,
+    conversationId: latestConversationId,
+    requestId,
+    source,
+  }
+}
+
+export const askGuideProject = async (
+  context: GuideProjectContext,
+  query: string,
+  conversationId = '',
+  signal?: AbortSignal,
+) => {
+  const payload = await requestGuide<Record<string, unknown>>('/assistant/project', {
+    method: 'POST',
+    body: {
+      stage: context.stage,
+      commission_task_id: context.commissionTaskId,
+      project_name: context.projectName,
+      query,
+      conversation_id: conversationId,
+    },
+    signal,
+  })
+  const raw = payload ?? {}
+
+  return {
+    stage: pickString(raw.stage, context.stage),
+    stageName: pickString(raw.stage_name, raw.stageName, context.stageName),
+    commissionTaskId: pickString(
+      raw.commission_task_id,
+      raw.commissionTaskId,
+      context.commissionTaskId,
+    ),
+    answer: pickString(raw.answer),
+    references: Array.isArray(raw.references) ? raw.references : [],
+    suggestions: pickRecordArray(raw.suggestions),
+    source: pickString(raw.source),
+    conversationId: pickString(raw.conversation_id, raw.conversationId),
+  } satisfies GuideProjectAnswer
 }
 
 interface GuideConversationListPayload {
@@ -241,7 +644,7 @@ const normalizeConversationMessage = (raw: Record<string, unknown>): GuideConver
 })
 
 export const fetchGuideConversations = async (signal?: AbortSignal) => {
-  const payload = await requestGuide<GuideConversationListPayload>('/assistant/conversations?limit=50', signal)
+  const payload = await requestGuide<GuideConversationListPayload>('/assistant/conversations?limit=50', { signal })
   return (payload?.conversations ?? []).map(normalizeConversation).filter((item) => item.id)
 }
 
@@ -251,7 +654,7 @@ export const fetchGuideConversationMessages = async (
 ) => {
   const payload = await requestGuide<GuideConversationMessagesPayload>(
     `/assistant/conversation/${encodeURIComponent(conversationId)}/messages`,
-    signal,
+    { signal },
   )
   return (payload?.messages ?? [])
     .map(normalizeConversationMessage)

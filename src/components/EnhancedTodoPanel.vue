@@ -3,8 +3,8 @@
     <nav class="workspace-subtabs" aria-label="待办分类">
       <button v-for="item in filters" :key="item" type="button" :class="{ 'is-active': item === activeFilter }" @click="activeFilter = item">{{ item }}</button>
     </nav>
-    <div v-if="isLoading && !todos.length" class="workspace-state">正在加载待办项目...</div>
-    <div v-else-if="errorMessage && !todos.length" class="workspace-state is-error">
+    <div v-if="isLoading && !hasTodos" class="workspace-state">正在加载待办项目...</div>
+    <div v-else-if="errorMessage && !hasTodos" class="workspace-state is-error">
       <span>{{ errorMessage }}</span>
       <button type="button" @click="loadTodos">重新加载</button>
     </div>
@@ -15,11 +15,11 @@
         <div class="todo-card__main">
           <strong>{{ item.title }}</strong>
           <time>{{ item.time }}</time>
-          <span class="todo-card__start">发起</span>
+          <span class="todo-card__start">{{ item.currentStageName || '待处理' }}</span>
         </div>
         <span class="todo-card__badge" :class="item.isUrgent ? 'is-urgent' : 'is-normal'">{{ item.statusText }}</span>
         <div class="todo-card__actions">
-          <button v-for="action in item.actions" :key="action" type="button" @click="notifyDeveloping">
+          <button v-for="action in item.actions" :key="action" type="button" @click="handleAction(item, action)">
             <component :is="actionIconMap[action]" />
             <span>{{ action }}</span>
           </button>
@@ -29,8 +29,8 @@
         </div>
       </article>
     </div>
-    <p v-if="isLoading && todos.length" class="workspace-refresh-tip">正在刷新...</p>
-    <p v-else-if="errorMessage && todos.length" class="workspace-refresh-tip is-error">{{ errorMessage }}</p>
+    <p v-if="isLoading && hasTodos" class="workspace-refresh-tip">正在刷新...</p>
+    <p v-else-if="errorMessage && hasTodos" class="workspace-refresh-tip is-error">{{ errorMessage }}</p>
   </section>
 </template>
 
@@ -45,15 +45,23 @@ import {
   QuestionCircleOutlined,
 } from '@ant-design/icons-vue'
 import { DIGITAL_HUMAN_DEVELOPMENT_NOTICE, DIGITAL_HUMAN_TODO_FILTERS } from '@/config/demo-config'
-import { fetchTodoProjects, type GuideProjectCard } from '@/services/guide-api'
+import {
+  fetchTodoProjects,
+  type GuideProjectCard,
+  type GuideTodoProjectGroups,
+} from '@/services/guide-api'
 
 const props = defineProps<{
   active: boolean
 }>()
 
+const emit = defineEmits<{
+  (event: 'select-project', project: GuideProjectCard): void
+}>()
+
 const filters = DIGITAL_HUMAN_TODO_FILTERS
 const activeFilter = ref(filters[0])
-const todos = ref<GuideProjectCard[]>([])
+const todoGroups = ref<GuideTodoProjectGroups>({ all: [], groups: {}, total: 0 })
 const isLoading = ref(false)
 const errorMessage = ref('')
 let activeRequest: AbortController | null = null
@@ -65,21 +73,33 @@ const actionIconMap: Record<string, unknown> = {
 }
 const notifyDeveloping = () => antMessage.info(DIGITAL_HUMAN_DEVELOPMENT_NOTICE)
 
-const resolveCategory = (taskType: number | null) => {
-  if (taskType === 3) return '绩效目标'
-  if (taskType === 1) return '事前'
-  if (taskType === 5) return '事中'
-  if (taskType === 2) return '事后'
-  return '其他'
+const categoryMap: Record<string, string> = {
+  全部任务: '全部',
+  绩效目标: '绩效目标申报',
+  事前: '事前',
+  事中: '事中',
+  事后: '事后',
+  其他: '其他',
 }
 
 const filteredTodos = computed(() => {
   if (activeFilter.value === filters[0]) {
-    return todos.value
+    return todoGroups.value.all
   }
 
-  return todos.value.filter((item) => resolveCategory(item.taskType) === activeFilter.value)
+  return todoGroups.value.groups[categoryMap[activeFilter.value] ?? activeFilter.value] ?? []
 })
+
+const hasTodos = computed(() => todoGroups.value.all.length > 0)
+
+const handleAction = (project: GuideProjectCard, action: string) => {
+  if (action === '提问') {
+    emit('select-project', project)
+    return
+  }
+
+  notifyDeveloping()
+}
 
 const loadTodos = async () => {
   activeRequest?.abort()
@@ -91,7 +111,7 @@ const loadTodos = async () => {
   try {
     const projects = await fetchTodoProjects(controller.signal)
     if (!controller.signal.aborted) {
-      todos.value = projects
+      todoGroups.value = projects
     }
   } catch (error) {
     if (!controller.signal.aborted) {

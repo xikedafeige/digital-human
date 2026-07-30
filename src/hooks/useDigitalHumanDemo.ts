@@ -9,17 +9,22 @@ import {
 } from '@/config/demo-config'
 import type {
   AvatarState,
-  ConversationHistory,
   DemoMessage,
+  GuideProjectContext,
   SpeechSynthesisResult,
 } from '@/types/avatar-types'
 import {
-  deleteConversationHistoryById,
-  loadConversationHistories,
-  upsertConversationHistory,
-} from '@/utils/conversation-history'
-import { markdownToPlainText, type ParsedReplyContent } from '@/utils/message-content'
-import { useDifyChat } from './useDifyChat'
+  askGuideProject,
+  searchGuide,
+  streamGuideQa,
+  type GuideProjectCard,
+  type GuideSearchRoute,
+} from '@/services/guide-api'
+import {
+  markdownToPlainText,
+  parseReplyContent,
+  type ParsedReplyContent,
+} from '@/utils/message-content'
 import { useSpeechRecognition } from './useSpeechRecognition'
 import { useSpeechSynthesis } from './useSpeechSynthesis'
 
@@ -100,6 +105,10 @@ const createMessage = (
       | 'thinkContent'
       | 'thinkCollapsed'
       | 'renderMode'
+      | 'routeCard'
+      | 'suggestions'
+      | 'projectContext'
+      | 'requestMode'
     >
   > = {},
 ): DemoMessage => ({
@@ -114,6 +123,10 @@ const createMessage = (
   thinkContent: options.thinkContent,
   thinkCollapsed: options.thinkCollapsed ?? true,
   renderMode: options.renderMode ?? (role === 'user' ? 'plain' : 'markdown'),
+  routeCard: options.routeCard,
+  suggestions: options.suggestions,
+  projectContext: options.projectContext,
+  requestMode: options.requestMode,
 })
 
 // 判断异常是否来自主动中断，避免误报为真实错误。
@@ -148,9 +161,14 @@ interface PlaybackQueueItem {
 
 interface ReplyFlowOptions {
   reuseMessageId?: string
+  projectContext?: GuideProjectContext | null
 }
 
-export function useDigitalHumanDemo() {
+interface DigitalHumanDemoOptions {
+  onOpenRecentProjects?: () => void
+}
+
+export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
   const isExpanded = ref(false)
   const inputText = ref('')
   const inputHint = ref('')
@@ -174,10 +192,8 @@ export function useDigitalHumanDemo() {
   const speechCompletedMessageIds = ref<string[]>([])
   const speechLoadingMessageId = ref('')
   const conversationId = ref('')
-  const conversationHistories = ref<ConversationHistory[]>(
-    loadConversationHistories(),
-  )
-  const currentHistoryId = ref('')
+  const projectConversationId = ref('')
+  const selectedProjectContext = ref<GuideProjectContext | null>(null)
   const isHistoryPanelOpen = ref(false)
 
   const suggestions = computed(() => DIGITAL_HUMAN_SUGGESTIONS)
@@ -201,8 +217,7 @@ export function useDigitalHumanDemo() {
   let currentAssistantMessageId = ''
   let flowTimers: number[] = []
   const activeTtsControllers = new Set<AbortController>()
-  let activeDifyController: AbortController | null = null
-  let activeDifyTaskId = ''
+  let activeGuideController: AbortController | null = null
   let inputHintTimer: number | null = null
   let voiceAutoSendTimerId: number | null = null
   let ttsQueue: TtsQueueItem[] = []
@@ -219,11 +234,10 @@ export function useDigitalHumanDemo() {
   let activePlaybackItem: PlaybackQueueItem | null = null
   let completedSpeechEffectiveChars = 0
   let totalSpeechEffectiveChars = 0
-  let difyStreamCompleted = false
+  let replyStreamCompleted = false
   // 远端历史仅作为只读快照展示，不能回写浏览器本地历史。
   let isExternalHistorySnapshot = false
 
-  const difyChatClient = useDifyChat()
   const speechRecognition = useSpeechRecognition({
     onPartial: (text) => {
       inputText.value = text
@@ -276,50 +290,6 @@ export function useDigitalHumanDemo() {
   // 根据消息 id 获取当前会话中的消息对象。
   const getMessageById = (messageId: string) =>
     messages.value.find((message) => message.id === messageId) ?? null
-
-  // 只有包含用户问题的对话才进入历史，避免欢迎语单独占用记录。
-  const hasPersistableMessages = () =>
-    messages.value.some((message) => message.role === 'user')
-
-  // 将当前消息列表和 Dify 上下文写入本地历史；写入失败时保留当前内存列表。
-  const persistCurrentConversation = () => {
-    if (isExternalHistorySnapshot) {
-      return
-    }
-
-    if (!hasPersistableMessages()) {
-      return
-    }
-
-    const result = upsertConversationHistory(conversationHistories.value, {
-      historyId: currentHistoryId.value,
-      difyConversationId: conversationId.value,
-      messages: messages.value,
-    })
-
-    currentHistoryId.value = result.history.id
-
-    if (result.didSave) {
-      conversationHistories.value = result.histories
-      return
-    }
-
-    const existingHistoryIndex = conversationHistories.value.findIndex(
-      (history) => history.id === result.history.id,
-    )
-
-    if (existingHistoryIndex === -1) {
-      conversationHistories.value = [
-        result.history,
-        ...conversationHistories.value,
-      ]
-      return
-    }
-
-    conversationHistories.value = conversationHistories.value.map((history) =>
-      history.id === result.history.id ? result.history : history,
-    )
-  }
 
   // 清理输入区临时提示及其自动消失定时器。
   const clearInputHint = () => {
@@ -376,7 +346,7 @@ export function useDigitalHumanDemo() {
     streamSpeechText = ''
     latestBodyMarkdown = ''
     totalSpeechEffectiveChars = 0
-    difyStreamCompleted = false
+    replyStreamCompleted = false
     speechLoadingMessageId.value = ''
   }
 
@@ -497,20 +467,10 @@ export function useDigitalHumanDemo() {
     activeTtsRequestCount = 0
   }
 
-  // 取消正在进行的 Dify 请求，并通知 Dify 后端停止任务。
-  const cancelPendingDify = () => {
-    const taskId = activeDifyTaskId
-
-    if (activeDifyController) {
-      activeDifyController.abort()
-      activeDifyController = null
-    }
-
-    activeDifyTaskId = ''
-
-    if (taskId) {
-      void difyChatClient.stop(taskId)
-    }
+  // 取消正在进行的智能引导请求，覆盖普通问答 SSE 和项目问答。
+  const cancelPendingGuide = () => {
+    activeGuideController?.abort()
+    activeGuideController = null
   }
 
   // 将所有 pending 消息收口为已完成，避免 UI 长期显示生成中。
@@ -521,7 +481,6 @@ export function useDigitalHumanDemo() {
       }
     })
 
-    persistCurrentConversation()
   }
 
   // 根据当前分段播放进度计算整条回复的播报进度。
@@ -583,7 +542,6 @@ export function useDigitalHumanDemo() {
     targetMessage.content = latestBodyMarkdown || displayedSpeechText
     targetMessage.pending = false
     targetMessage.renderMode = 'markdown'
-    persistCurrentConversation()
   }
 
   // 立即结束当前流程并恢复空闲态。
@@ -601,7 +559,7 @@ export function useDigitalHumanDemo() {
     clearSpeechProgress()
   }
 
-  // 将 Dify 流式内容同步到 assistant 消息，并维护 think 展开/折叠状态。
+  // 将智能引导流式内容同步到 assistant 消息，并维护 think 展开/折叠状态。
   const updateAssistantMessage = (
     messageId: string,
     content: ParsedReplyContent,
@@ -637,7 +595,7 @@ export function useDigitalHumanDemo() {
       : true
   }
 
-  // 检查 Dify、TTS 和播放队列是否全部完成，满足条件时结束整轮流程。
+  // 检查回复、TTS 和播放队列是否全部完成，满足条件时结束整轮流程。
   const finishSpeechQueueIfReady = (flowId: number) => {
     if (flowId !== activeFlowId) {
       return
@@ -647,7 +605,7 @@ export function useDigitalHumanDemo() {
       return
     }
 
-    if (activeTtsRequestCount > 0 || ttsQueue.length > 0 || !difyStreamCompleted) {
+    if (activeTtsRequestCount > 0 || ttsQueue.length > 0 || !replyStreamCompleted) {
       status.value = 'thinking'
       return
     }
@@ -669,10 +627,12 @@ export function useDigitalHumanDemo() {
     }
 
     if (item.updateMessageContent !== false) {
-      currentMessage.pending = !difyStreamCompleted
+      currentMessage.pending = !replyStreamCompleted
       currentMessage.engine = item.engine
-      currentMessage.conversationId =
-        conversationId.value || currentMessage.conversationId
+      if (currentMessage.requestMode !== 'project') {
+        currentMessage.conversationId =
+          conversationId.value || currentMessage.conversationId
+      }
     }
 
     clearSpeechLoading(item.messageId)
@@ -921,7 +881,7 @@ export function useDigitalHumanDemo() {
     drainTtsQueue(flowId)
   }
 
-  // Dify 流结束时补齐尾段，并标记后续可在队列清空后结束流程。
+  // 回复流结束时补齐尾段，并标记后续可在队列清空后结束流程。
   const finalizeSpeechFlow = (
     flowId: number,
     messageId: string,
@@ -932,7 +892,7 @@ export function useDigitalHumanDemo() {
       return
     }
 
-    difyStreamCompleted = true
+    replyStreamCompleted = true
     enqueueSpeechSegments(
       flowId,
       messageId,
@@ -1010,7 +970,7 @@ export function useDigitalHumanDemo() {
       tick()
     })
 
-  // 外部 Dify 不可用时运行本地兜底问答流程。
+  // 智能引导服务不可用时运行本地兜底问答流程。
   const runFallbackReplyFlow = async (
     flowId: number,
     question: string,
@@ -1093,7 +1053,7 @@ export function useDigitalHumanDemo() {
     targetMessage.pending = false
   }
 
-  // 取消当前完整流程，覆盖 Dify、TTS、播放、录音和 UI 状态；部分内部重置场景会跳过历史写入。
+  // 取消当前完整流程，覆盖智能引导、TTS、播放、录音和 UI 状态。
   const cancelCurrentFlow = (options: { persistHistory?: boolean } = {}) => {
     const shouldPersistHistory = options.persistHistory ?? true
 
@@ -1111,7 +1071,7 @@ export function useDigitalHumanDemo() {
       })
     }
 
-    cancelPendingDify()
+    cancelPendingGuide()
     cancelPendingSpeechSynthesis()
     resetSpeechQueueState()
     void speechRecognition.cancel()
@@ -1133,12 +1093,85 @@ export function useDigitalHumanDemo() {
     cancelCurrentFlow()
   }
 
-  // 发起一轮问答流程：Dify 流式文本、TTS 预合成和播放队列协同执行。
+  // 将后端路由和查询参数转换为仅允许 http/https 的安全跳转卡片。
+  const buildGuideRouteCard = (route: GuideSearchRoute | null) => {
+    if (!route?.url) {
+      return undefined
+    }
+
+    try {
+      const targetUrl = new URL(route.url, window.location.origin)
+      if (!['http:', 'https:'].includes(targetUrl.protocol)) {
+        return undefined
+      }
+
+      Object.entries(route.params).forEach(([key, value]) => {
+        if (value === undefined || value === null) {
+          return
+        }
+
+        if (Array.isArray(value)) {
+          value.forEach((item) => targetUrl.searchParams.append(key, String(item)))
+          return
+        }
+
+        if (typeof value !== 'object') {
+          targetUrl.searchParams.set(key, String(value))
+        }
+      })
+
+      return {
+        title: route.title || targetUrl.href,
+        url: targetUrl.href,
+      }
+    } catch {
+      return undefined
+    }
+  }
+
+  // 完成一段智能引导回复，并复用现有 TTS 分段、预取和顺序播放链路。
+  const completeGuideReply = (
+    flowId: number,
+    messageId: string,
+    markdown: string,
+    messageOptions: Pick<DemoMessage, 'conversationId' | 'routeCard' | 'suggestions' | 'projectContext' | 'requestMode'>,
+  ) => {
+    const parsedContent = parseReplyContent(markdown)
+    const targetMessage = getMessageById(messageId)
+    if (!targetMessage || flowId !== activeFlowId) {
+      return false
+    }
+
+    targetMessage.routeCard = messageOptions.routeCard
+    targetMessage.suggestions = messageOptions.suggestions
+    targetMessage.projectContext = messageOptions.projectContext
+    targetMessage.requestMode = messageOptions.requestMode
+    updateAssistantMessage(messageId, parsedContent, {
+      pending: false,
+      engine: 'guide',
+      conversationId: messageOptions.conversationId,
+    })
+
+    if (parsedContent.speechText) {
+      finalizeSpeechFlow(flowId, messageId, parsedContent.speechText, 'guide')
+      return true
+    }
+
+    replyStreamCompleted = true
+    finishSpeechQueueIfReady(flowId)
+    return Boolean(parsedContent.bodyMarkdown || messageOptions.routeCard)
+  }
+
+  // 发起一轮问答流程：智能引导文本、TTS 预合成和播放队列协同执行。
   const runReplyFlow = (
     question: string,
     source: DemoMessage['source'],
     options: ReplyFlowOptions = {},
   ) => {
+    const projectContext = options.projectContext === undefined
+      ? selectedProjectContext.value
+      : options.projectContext
+    const requestMode: DemoMessage['requestMode'] = projectContext ? 'project' : 'global'
     const reusableMessage = options.reuseMessageId
       ? getMessageById(options.reuseMessageId)
       : null
@@ -1146,12 +1179,14 @@ export function useDigitalHumanDemo() {
       reusableMessage?.role === 'assistant'
         ? reusableMessage
         : createMessage('assistant', THINKING_PLACEHOLDER, {
-            pending: true,
-            source,
-            engine: 'dify',
-            renderMode: 'markdown',
-            thinkCollapsed: true,
-          })
+             pending: true,
+             source,
+             engine: 'guide',
+             renderMode: 'markdown',
+             thinkCollapsed: true,
+             projectContext: projectContext ?? undefined,
+             requestMode,
+           })
     const flowId = activeFlowId + 1
 
     activeFlowId = flowId
@@ -1166,10 +1201,14 @@ export function useDigitalHumanDemo() {
       assistantMessage.content = THINKING_PLACEHOLDER
       assistantMessage.pending = true
       assistantMessage.source = source
-      assistantMessage.engine = 'dify'
+      assistantMessage.engine = 'guide'
       assistantMessage.thinkContent = ''
       assistantMessage.thinkCollapsed = true
       assistantMessage.renderMode = 'markdown'
+      assistantMessage.routeCard = undefined
+      assistantMessage.suggestions = undefined
+      assistantMessage.projectContext = projectContext ?? undefined
+      assistantMessage.requestMode = requestMode
     } else {
       messages.value.push(assistantMessage)
     }
@@ -1178,97 +1217,115 @@ export function useDigitalHumanDemo() {
     showInterruptButton.value = true
 
     const assistantMessageId = assistantMessage.id
-    const difyController = new AbortController()
-    activeDifyController = difyController
-    activeDifyTaskId = ''
+    const guideController = new AbortController()
+    activeGuideController = guideController
 
     void (async () => {
       try {
-        const result = await difyChatClient.run(question, {
-          conversationId: conversationId.value,
-          signal: difyController.signal,
-          onTaskId: (taskId) => {
-            if (flowId !== activeFlowId) {
-              return
-            }
+        if (projectContext) {
+          const result = await askGuideProject(
+            projectContext,
+            question,
+            projectConversationId.value,
+            guideController.signal,
+          )
+          if (flowId !== activeFlowId) {
+            return
+          }
 
-            activeDifyTaskId = taskId
-          },
-          onConversationId: (nextConversationId) => {
-            if (flowId !== activeFlowId) {
-              return
-            }
+          projectConversationId.value = result.conversationId || projectConversationId.value
+          if (!result.answer) {
+            throw new Error('项目助手未返回回答内容')
+          }
 
-            conversationId.value = nextConversationId
-            persistCurrentConversation()
-
-            const targetMessage = getMessageById(assistantMessageId)
-            if (targetMessage) {
-              targetMessage.conversationId = nextConversationId
-            }
-          },
-          onText: (content) => {
-            if (flowId !== activeFlowId) {
-              return
-            }
-
-            updateAssistantMessage(assistantMessageId, content, {
-              pending: true,
-              engine: 'dify',
-              conversationId: conversationId.value,
-            })
-            enqueueSpeechSegments(
-              flowId,
-              assistantMessageId,
-              content.speechText,
-              'dify',
-            )
-          },
-        })
-
-        if (activeDifyController === difyController) {
-          activeDifyController = null
+          completeGuideReply(flowId, assistantMessageId, result.answer, {
+            conversationId: projectConversationId.value,
+            routeCard: undefined,
+            suggestions: result.suggestions,
+            projectContext,
+            requestMode: 'project',
+          })
+          return
         }
 
-        activeDifyTaskId = ''
-
+        const searchResult = await searchGuide(
+          question,
+          conversationId.value,
+          guideController.signal,
+        )
         if (flowId !== activeFlowId) {
           return
         }
 
-        conversationId.value = result.conversationId || conversationId.value
-        persistCurrentConversation()
+        conversationId.value = searchResult.conversationId || conversationId.value
+        if (searchResult.intent === 'qa') {
+          const streamResult = await streamGuideQa(
+            question,
+            conversationId.value,
+            {
+              onConversationId: (nextConversationId) => {
+                if (flowId === activeFlowId) {
+                  conversationId.value = nextConversationId
+                }
+              },
+              onText: (answer) => {
+                if (flowId !== activeFlowId) {
+                  return
+                }
 
-        if (!result.bodyMarkdown || !result.speechText) {
-          await runFallbackReplyFlow(flowId, question, assistantMessageId)
+                const parsedContent = parseReplyContent(answer)
+                updateAssistantMessage(assistantMessageId, parsedContent, {
+                  pending: true,
+                  engine: 'guide',
+                  conversationId: conversationId.value,
+                })
+                enqueueSpeechSegments(
+                  flowId,
+                  assistantMessageId,
+                  parsedContent.speechText,
+                  'guide',
+                )
+              },
+            },
+            guideController.signal,
+          )
+          if (flowId !== activeFlowId) {
+            return
+          }
+
+          conversationId.value = streamResult.conversationId || conversationId.value
+          completeGuideReply(flowId, assistantMessageId, streamResult.answer, {
+            conversationId: conversationId.value,
+            routeCard: undefined,
+            suggestions: undefined,
+            projectContext: undefined,
+            requestMode: 'global',
+          })
           return
         }
 
-        updateAssistantMessage(assistantMessageId, result, {
-          pending: false,
-          engine: 'dify',
-          conversationId: conversationId.value,
-        })
-        persistCurrentConversation()
-
-        finalizeSpeechFlow(
-          flowId,
-          assistantMessageId,
-          result.speechText,
-          'dify',
-        )
-      } catch (error) {
-        const taskId = activeDifyTaskId
-
-        if (activeDifyController === difyController) {
-          activeDifyController = null
+        const routeCard = searchResult.intent === 'navigation'
+          ? buildGuideRouteCard(searchResult.route)
+          : undefined
+        const replyText = searchResult.description || routeCard?.title || ''
+        if (!replyText) {
+          throw new Error('智能引导未返回可展示内容')
         }
 
-        activeDifyTaskId = ''
-
+        completeGuideReply(flowId, assistantMessageId, replyText, {
+          conversationId: conversationId.value,
+          routeCard,
+          suggestions: undefined,
+          projectContext: undefined,
+          requestMode: 'global',
+        })
+        if (searchResult.intent === 'recent_projects') {
+          demoOptions.onOpenRecentProjects?.()
+        }
+      } catch (error) {
         if (
           flowId !== activeFlowId ||
-          difyController.signal.aborted ||
+          guideController.signal.aborted ||
           isAbortError(error)
         ) {
           return
@@ -1281,30 +1338,28 @@ export function useDigitalHumanDemo() {
           targetMessage.content !== THINKING_PLACEHOLDER
             ? targetMessage.content.trim()
             : ''
-        const partialSpeechText = streamSpeechText || markdownToPlainText(partialBody)
-
-        if (taskId) {
-          void difyChatClient.stop(taskId)
-        }
+        const partialSpeechText = streamSpeechText || markdownToPlainText(latestBodyMarkdown || partialBody)
 
         if (partialSpeechText) {
           if (targetMessage) {
             targetMessage.pending = false
-            targetMessage.engine = 'dify'
+            targetMessage.engine = 'guide'
           }
-          persistCurrentConversation()
 
           finalizeSpeechFlow(
             flowId,
             assistantMessageId,
             partialSpeechText,
-            'dify',
+            'guide',
           )
           return
         }
 
         await runFallbackReplyFlow(flowId, question, assistantMessageId)
-        persistCurrentConversation()
+      } finally {
+        if (activeGuideController === guideController) {
+          activeGuideController = null
+        }
       }
     })()
   }
@@ -1320,10 +1375,15 @@ export function useDigitalHumanDemo() {
       return
     }
 
-    // 远端历史没有可复用的 Dify conversation_id。用户开始新问题时，
-    // 清掉只读快照并从现有欢迎态流程重新建立 Dify 会话。
+    // 服务端历史只用于回放；用户继续提问时从新的智能引导会话开始。
     if (isExternalHistorySnapshot) {
       resetToWelcome()
+    }
+
+    const projectContext = selectedProjectContext.value
+    if (projectContext && (!projectContext.stage || !projectContext.commissionTaskId)) {
+      showTransientInputHint('项目上下文不完整，请重新选择项目')
+      return
     }
 
     if (isBusy.value || isRecording.value || isAwaitingVoiceRecognitionResult.value) {
@@ -1336,11 +1396,12 @@ export function useDigitalHumanDemo() {
       createMessage('user', question, {
         source,
         renderMode: 'plain',
+        projectContext: projectContext ?? undefined,
+        requestMode: projectContext ? 'project' : 'global',
       }),
     )
-    persistCurrentConversation()
     inputText.value = ''
-    runReplyFlow(question, source)
+    runReplyFlow(question, source, { projectContext })
   }
 
   // 提交当前输入框文本。
@@ -1528,10 +1589,22 @@ export function useDigitalHumanDemo() {
     clearInputHint()
     isExpanded.value = true
     clearSpeechLoading(messageId)
+    const projectContext = sourceMessage.projectContext ?? null
+    if (projectContext) {
+      const currentContext = selectedProjectContext.value
+      if (
+        !currentContext ||
+        currentContext.commissionTaskId !== projectContext.commissionTaskId ||
+        currentContext.stage !== projectContext.stage
+      ) {
+        projectConversationId.value = ''
+      }
+      selectedProjectContext.value = projectContext
+    }
     runReplyFlow(
       sourceMessage.content,
       sourceMessage.source === 'voice' ? 'voice' : 'text',
-      { reuseMessageId: messageId },
+      { reuseMessageId: messageId, projectContext },
     )
   }
 
@@ -1561,7 +1634,7 @@ export function useDigitalHumanDemo() {
     activeFlowId = flowId
     currentAssistantMessageId = messageId
     latestBodyMarkdown = targetMessage.content
-    difyStreamCompleted = true
+    replyStreamCompleted = true
     status.value = 'thinking'
     showInterruptButton.value = true
 
@@ -1569,7 +1642,7 @@ export function useDigitalHumanDemo() {
       flowId,
       messageId,
       speechText,
-      targetMessage.engine ?? 'dify',
+      targetMessage.engine ?? 'guide',
       true,
       false,
     )
@@ -1599,10 +1672,11 @@ export function useDigitalHumanDemo() {
     isRecording.value = false
     status.value = 'idle'
     conversationId.value = ''
-    currentHistoryId.value = ''
+    projectConversationId.value = ''
+    selectedProjectContext.value = null
     speechCompletedMessageIds.value = []
     speechLoadingMessageId.value = ''
-    cancelPendingDify()
+    cancelPendingGuide()
     cancelPendingSpeechSynthesis()
     resetSpeechQueueState()
     void speechRecognition.cancel()
@@ -1612,9 +1686,8 @@ export function useDigitalHumanDemo() {
     clearSpeechProgress()
   }
 
-  // 新建对话：先保存当前有效对话，再只清空当前视图和上下文，不删除历史列表。
+  // 新建对话：清空消息、全局会话和项目附件上下文。
   const clearConversation = () => {
-    persistCurrentConversation()
     cancelCurrentFlow({ persistHistory: false })
     resetToWelcome()
     isHistoryPanelOpen.value = false
@@ -1623,38 +1696,6 @@ export function useDigitalHumanDemo() {
   // 打开或关闭历史对话浮层。
   const toggleHistoryPanel = () => {
     isHistoryPanelOpen.value = !isHistoryPanelOpen.value
-  }
-
-  // 从本地历史恢复消息和 Dify conversationId；加载历史只恢复视图，不回写当前会话。
-  const loadConversationHistory = (historyId: string) => {
-    const targetHistory = conversationHistories.value.find(
-      (history) => history.id === historyId,
-    )
-
-    if (!targetHistory) {
-      return
-    }
-
-    isExternalHistorySnapshot = false
-    // 跳过历史写入，避免点击历史项时把当前会话额外保存成新记录。
-    cancelCurrentFlow({ persistHistory: false })
-    messages.value = targetHistory.messages.map((message) => ({
-      ...message,
-      pending: false,
-      thinkCollapsed: message.thinkCollapsed ?? true,
-    }))
-    conversationId.value = targetHistory.difyConversationId ?? ''
-    currentHistoryId.value = targetHistory.id
-    inputText.value = ''
-    speechCompletedMessageIds.value = targetHistory.messages
-      .filter(
-        (message) =>
-          message.role === 'assistant' && Boolean(message.content.trim()),
-      )
-      .map((message) => message.id)
-    speechLoadingMessageId.value = ''
-    isHistoryPanelOpen.value = false
-    status.value = 'idle'
   }
 
   // 装载智能引导服务端会话消息，仅用于只读回放，不写入 localStorage。
@@ -1666,7 +1707,8 @@ export function useDigitalHumanDemo() {
       thinkCollapsed: message.thinkCollapsed ?? true,
     }))
     conversationId.value = ''
-    currentHistoryId.value = ''
+    projectConversationId.value = ''
+    selectedProjectContext.value = null
     inputText.value = ''
     // 远端回放不开放重新生成、反馈和朗读等会改变当前流程的消息动作。
     speechCompletedMessageIds.value = []
@@ -1676,22 +1718,49 @@ export function useDigitalHumanDemo() {
     status.value = 'idle'
   }
 
-  // 删除单条历史；如果删除的是当前会话，则回到欢迎态。
-  const deleteConversationHistory = (historyId: string) => {
-    conversationHistories.value = deleteConversationHistoryById(
-      conversationHistories.value,
-      historyId,
-    )
-
-    if (currentHistoryId.value === historyId) {
-      cancelCurrentFlow({ persistHistory: false })
+  // 选择项目后保留附件，切换到不同项目时重置项目会话。
+  const attachProject = (project: GuideProjectCard) => {
+    if (isExternalHistorySnapshot) {
       resetToWelcome()
     }
+
+    const nextContext: GuideProjectContext = {
+      todoId: project.todoId || project.id,
+      commissionTaskId: project.commissionTaskId,
+      projectName: project.projectName || project.title,
+      stage: project.stage,
+      stageName: project.stageName || project.taskTypeName,
+    }
+    const currentContext = selectedProjectContext.value
+    const isSameProject =
+      currentContext?.commissionTaskId === nextContext.commissionTaskId &&
+      currentContext.stage === nextContext.stage
+
+    if (isBusy.value || isRecording.value || isAwaitingVoiceRecognitionResult.value) {
+      cancelCurrentFlow()
+    }
+
+    if (!isSameProject) {
+      projectConversationId.value = ''
+    }
+    selectedProjectContext.value = nextContext
+    inputText.value = ''
+    clearInputHint()
+  }
+
+  // 删除项目附件时结束当前项目请求，并恢复全局问答模式。
+  const removeProject = () => {
+    if (isBusy.value || isRecording.value || isAwaitingVoiceRecognitionResult.value) {
+      cancelCurrentFlow()
+    }
+    selectedProjectContext.value = null
+    projectConversationId.value = ''
+    clearInputHint()
   }
 
   onBeforeUnmount(() => {
     clearFlowTimers()
-    cancelPendingDify()
+    cancelPendingGuide()
     cancelPendingSpeechSynthesis()
     resetSpeechQueueState()
     void speechRecognition.cancel()
@@ -1708,11 +1777,9 @@ export function useDigitalHumanDemo() {
   })
 
   return {
+    attachProject,
     clearConversation,
     collapse,
-    conversationHistories,
-    currentHistoryId,
-    deleteConversationHistory,
     expand,
     handleSpeechComplete,
     handleSpeechProgress,
@@ -1726,11 +1793,12 @@ export function useDigitalHumanDemo() {
     isRecording,
     isSpeechSynthesizing,
     latestAssistantText,
-    loadConversationHistory,
     loadExternalConversationMessages,
     messages,
     readMessageAloud,
     regenerateAssistantMessage,
+    removeProject,
+    selectedProjectContext,
     sendText,
     showInterruptButton,
     speechCompletedMessageIds,

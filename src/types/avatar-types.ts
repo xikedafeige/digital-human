@@ -2,8 +2,27 @@
 export type AvatarState = 'idle' | 'listening' | 'thinking' | 'speaking'
 export type MessageRole = 'user' | 'assistant' | 'system'
 export type MessageSource = 'text' | 'voice' | 'system'
+export type GuideProjectStage =
+  | 'target_declaration'
+  | 'pre_evaluation'
+  | 'mid_monitoring'
+  | 'post_evaluation'
 export type AvatarVisemeCode = 'sil' | 'A' | 'E' | 'O' | 'U' | 'FV' | 'L' | 'MBP'
 export type SpeechPlaybackMode = 'energy' | 'viseme'
+
+export interface GuideProjectContext {
+  todoId: string
+  commissionTaskId: string
+  projectName: string
+  stage: GuideProjectStage | ''
+  stageName: string
+}
+
+export interface GuideRouteCard {
+  title: string
+  url: string
+  description?: string
+}
 
 export interface DemoMessage {
   id: string
@@ -12,11 +31,15 @@ export interface DemoMessage {
   timestamp: number
   pending?: boolean
   source?: MessageSource
-  engine?: 'dify' | 'fallback'
+  engine?: 'dify' | 'guide' | 'fallback'
   conversationId?: string
   thinkContent?: string
   thinkCollapsed?: boolean
   renderMode?: 'plain' | 'markdown'
+  routeCard?: GuideRouteCard
+  suggestions?: string[]
+  projectContext?: GuideProjectContext
+  requestMode?: 'global' | 'project'
 }
 
 export interface ConversationHistory {
