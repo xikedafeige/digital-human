@@ -180,11 +180,10 @@
 										<ul>
 											<li v-for="(item, index) in message.cooperationItems" :key="`${message.id}-cooperation-${index}`">
 												<button type="button" class="assistant-message__cooperation-card"
-													@click="handleCooperationDownload(item)">
+													@click="handleCooperationPreview(item)">
 													<span class="assistant-message__cooperation-main">
 														<strong>{{ item.title }}</strong>
 													</span>
-													<ArrowRightOutlined />
 												</button>
 											</li>
 										</ul>
@@ -836,21 +835,17 @@ const handleQueryProjectAction = (project: GuideProjectCard, action: string) => 
 	notifyDeveloping()
 }
 
-const handleCooperationDownload = (item: GuideCooperationItem) => {
+const handleCooperationPreview = (item: GuideCooperationItem) => {
 	const downloadUrl = item.downloadUrl?.trim()
 	if (!downloadUrl) {
-		antMessage.warning('文件暂不可下载')
+		antMessage.warning('文件暂不可预览')
 		return
 	}
 
-	const link = document.createElement('a')
-	link.href = downloadUrl
-	link.target = '_blank'
-	link.rel = 'noopener noreferrer'
-	link.download = item.title || ''
-	document.body.appendChild(link)
-	link.click()
-	document.body.removeChild(link)
+	const opened = window.open(downloadUrl, '_blank', 'noopener,noreferrer')
+	if (!opened) {
+		window.location.assign(downloadUrl)
+	}
 }
 
 const navigateToRoute = (url: string) => {

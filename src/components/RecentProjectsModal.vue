@@ -15,6 +15,8 @@
           allow-clear
           placeholder="搜索项目名称"
           size="small"
+          :prefix="h(SearchOutlined)"
+          class="recent-projects-search__input"
         />
       </div>
 
@@ -69,7 +71,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, h, onBeforeUnmount, ref, watch } from 'vue'
 import {
   Input as AInput,
   Modal as AModal,
@@ -81,6 +83,7 @@ import {
   BarChartOutlined,
   EditOutlined,
   QuestionCircleOutlined,
+  SearchOutlined,
 } from '@ant-design/icons-vue'
 import { DIGITAL_HUMAN_DEVELOPMENT_NOTICE } from '@/config/demo-config'
 import { fetchRecentProjects, type GuideProjectCard } from '@/services/guide-api'
@@ -221,6 +224,29 @@ onBeforeUnmount(() => activeRequest?.abort())
 <style scoped lang="less">
 .recent-projects-content { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; }
 .recent-projects-search { flex: none; margin-bottom: 10px; }
+.recent-projects-search__input { width: 100%; }
+.recent-projects-search :deep(.ant-input-affix-wrapper) {
+  min-height: 34px;
+  padding: 0 10px;
+  border-color: #dfe6f3;
+  border-radius: 10px;
+  background: #f7f9fd;
+  box-shadow: none;
+  transition: border-color .16s ease, background .16s ease, box-shadow .16s ease;
+}
+.recent-projects-search :deep(.ant-input-affix-wrapper:hover),
+.recent-projects-search :deep(.ant-input-affix-wrapper-focused) {
+  border-color: #7aa4f7;
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(122, 164, 247, .08);
+}
+.recent-projects-search :deep(.ant-input-prefix) {
+  margin-inline-end: 8px;
+  color: #9aa6b8;
+}
+.recent-projects-search :deep(.ant-input) {
+  font-size: 12px;
+}
 .recent-projects-body { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 .recent-projects-list { display: grid; height: 100%; gap: 12px; min-height: 0; overflow-y: auto; padding: 2px 2px 4px; scrollbar-gutter: stable; }
 .recent-project-card { position: relative; display: grid; grid-template-columns: 8px minmax(0, 1fr); gap: 7px 3px; min-height: 128px; padding: 14px 10px 11px; border: 1px solid #dfe2e7; border-radius: 8px; background: #fff; box-shadow: 0 2px 5px rgba(50, 59, 75, .045); }
