@@ -184,6 +184,7 @@ interface ReplyFlowOptions {
   reuseMessageId?: string
   projectContext?: GuideProjectContext | null
   selectedDisambiguationCandidate?: GuideDisambiguationCandidate
+  speak?: boolean
 }
 
 interface DigitalHumanDemoOptions {
@@ -527,14 +528,18 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     const playedEffectiveChars =
       completedSpeechEffectiveChars +
       currentSegmentEffectiveChars * Math.max(0, Math.min(1, segmentProgress))
-
-    speechOverallProgress.value = Math.max(
+    const normalizedProgress = Math.max(
       0,
       Math.min(
         1,
         playedEffectiveChars / Math.max(1, totalSpeechEffectiveChars),
       ),
     )
+
+    speechOverallProgress.value =
+      status.value === 'speaking'
+        ? Math.min(normalizedProgress, 0.995)
+        : normalizedProgress
   }
 
   // 按当前分段播放进度更新用户可见正文。
@@ -600,7 +605,9 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     messageId: string,
     content: ParsedReplyContent,
     options: Pick<DemoMessage, 'pending' | 'engine'> &
-      Partial<Pick<DemoMessage, 'conversationId'>>,
+      Partial<Pick<DemoMessage, 'conversationId'>> & {
+        speechEnabled?: boolean
+      },
   ) => {
     const targetMessage = getMessageById(messageId)
     if (!targetMessage) {
@@ -610,8 +617,10 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     latestBodyMarkdown = content.bodyMarkdown || latestBodyMarkdown
     latestMessageRenderBlocks = content.renderBlocks
 
-    const nextBodyContent =
-      displayedSpeechText || (content.thinkMarkdown ? '' : THINKING_PLACEHOLDER)
+    const nextBodyContent = options.speechEnabled
+      ? displayedSpeechText ||
+        (content.thinkMarkdown ? '' : THINKING_PLACEHOLDER)
+      : content.bodyMarkdown || THINKING_PLACEHOLDER
 
     targetMessage.content = nextBodyContent
     targetMessage.thinkContent = content.thinkMarkdown || ''
@@ -1031,37 +1040,24 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
 
     const fallbackReply = buildFallbackReplyText(question)
     targetMessage.engine = 'fallback'
-    targetMessage.content = ''
-    targetMessage.thinkContent = ''
-    targetMessage.thinkCollapsed = true
     targetMessage.pending = true
     targetMessage.renderMode = 'markdown'
 
-    const didCompleteStreaming = await streamMarkdownReply(
-      flowId,
-      messageId,
-      fallbackReply,
-      'fallback',
-      (markdownText) => {
-        enqueueSpeechSegments(
-          flowId,
-          messageId,
-          markdownToSpeechText(markdownText),
-          'fallback',
-        )
-      },
-    )
-
-    if (!didCompleteStreaming || flowId !== activeFlowId) {
-      return
-    }
-
-    finalizeSpeechFlow(
-      flowId,
-      messageId,
-      markdownToSpeechText(fallbackReply),
-      'fallback',
-    )
+    completeGuideReply(flowId, messageId, fallbackReply, {
+      engine: 'fallback',
+      conversationId:
+        targetMessage.requestMode === 'project'
+          ? projectConversationId.value
+          : conversationId.value,
+      routeCard: undefined,
+      suggestions: undefined,
+      cooperationItems: undefined,
+      disambiguationCandidates: undefined,
+      disambiguationQuery: undefined,
+      projectContext: targetMessage.projectContext ?? undefined,
+      requestMode: targetMessage.requestMode ?? 'global',
+      speak: false,
+    })
   }
 
   // 中断时收口当前 assistant 消息，避免留下空白或永久 pending 气泡。
@@ -1182,6 +1178,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
       | 'conversationId'
       | 'routeCard'
       | 'suggestions'
+      | 'cooperationItems'
       | 'projectContext'
       | 'requestMode'
     > &
@@ -1190,7 +1187,10 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
           DemoMessage,
           'disambiguationCandidates' | 'disambiguationQuery'
         >
-      >,
+      > & {
+        engine?: DemoMessage['engine']
+        speak?: boolean
+      },
   ) => {
     const parsedContent = parseReplyContent(markdown)
     const targetMessage = getMessageById(messageId)
@@ -1200,6 +1200,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
 
     targetMessage.routeCard = messageOptions.routeCard
     targetMessage.suggestions = messageOptions.suggestions
+    targetMessage.cooperationItems = messageOptions.cooperationItems
     targetMessage.disambiguationCandidates =
       messageOptions.disambiguationCandidates
     targetMessage.disambiguationQuery = messageOptions.disambiguationQuery
@@ -1208,18 +1209,23 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     targetMessage.requestMode = messageOptions.requestMode
     updateAssistantMessage(messageId, parsedContent, {
       pending: false,
-      engine: 'guide',
+      engine: messageOptions.engine ?? 'guide',
       conversationId: messageOptions.conversationId,
+      speechEnabled: Boolean(messageOptions.speak),
     })
 
-    if (parsedContent.speechText) {
+    if (messageOptions.speak && parsedContent.speechText) {
       finalizeSpeechFlow(flowId, messageId, parsedContent.speechText, 'guide')
       return true
     }
 
     replyStreamCompleted = true
     finishSpeechQueueIfReady(flowId)
-    return Boolean(parsedContent.bodyMarkdown || messageOptions.routeCard)
+    return Boolean(
+      parsedContent.bodyMarkdown ||
+        messageOptions.routeCard ||
+        messageOptions.cooperationItems?.length,
+    )
   }
 
   // 发起一轮问答流程：智能引导文本、TTS 预合成和播放队列协同执行。
@@ -1235,6 +1241,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     const requestMode: DemoMessage['requestMode'] = projectContext
       ? 'project'
       : 'global'
+    let shouldSpeak = Boolean(options.speak)
     const selectedDisambiguationCandidate =
       options.selectedDisambiguationCandidate
     const reusableMessage = options.reuseMessageId
@@ -1273,6 +1280,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
       assistantMessage.renderBlocks = undefined
       assistantMessage.routeCard = undefined
       assistantMessage.suggestions = undefined
+      assistantMessage.cooperationItems = undefined
       assistantMessage.disambiguationCandidates = undefined
       assistantMessage.disambiguationQuery = undefined
       assistantMessage.selectedDisambiguationCandidateId = undefined
@@ -1317,13 +1325,8 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
                   pending: true,
                   engine: 'guide',
                   conversationId: projectRequestConversationId,
+                  speechEnabled: false,
                 })
-                enqueueSpeechSegments(
-                  flowId,
-                  assistantMessageId,
-                  parsedContent.speechText,
-                  'guide',
-                )
               },
             },
             guideController.signal,
@@ -1341,12 +1344,23 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
             throw new Error('项目助手未返回回答内容')
           }
 
+          console.log('[guide/assistant/project/stream] final', {
+            answer: result.answer,
+            conversationId: nextProjectConversationId,
+            requestId: result.requestId,
+            suggestions: result.suggestions,
+          })
+
           completeGuideReply(flowId, assistantMessageId, result.answer, {
             conversationId: nextProjectConversationId,
             routeCard: undefined,
-            suggestions: result.suggestions,
+            suggestions: result.suggestions?.length
+              ? result.suggestions
+              : undefined,
+            cooperationItems: undefined,
             projectContext,
             requestMode: 'project',
+            speak: false,
           })
           return
         }
@@ -1364,6 +1378,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
         conversationId.value =
           searchResult.conversationId || conversationId.value
         if (searchResult.intent === 'qa') {
+          shouldSpeak = true
           const streamResult = await streamGuideQa(
             question,
             conversationId.value,
@@ -1383,6 +1398,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
                   pending: true,
                   engine: 'guide',
                   conversationId: conversationId.value,
+                  speechEnabled: true,
                 })
                 enqueueSpeechSegments(
                   flowId,
@@ -1400,14 +1416,44 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
 
           conversationId.value =
             streamResult.conversationId || conversationId.value
+          console.log('[guide/qa/stream] final', {
+            answer: streamResult.answer,
+            conversationId: conversationId.value,
+            requestId: streamResult.requestId,
+          })
           completeGuideReply(flowId, assistantMessageId, streamResult.answer, {
             conversationId: conversationId.value,
             routeCard: undefined,
             suggestions: undefined,
+            cooperationItems: undefined,
             disambiguationCandidates: undefined,
             disambiguationQuery: undefined,
             projectContext: undefined,
             requestMode: 'global',
+            speak: true,
+          })
+          return
+        }
+
+        if (
+          searchResult.action === 'show_cooperation_guide' ||
+          searchResult.intent === 'cooperation'
+        ) {
+          const replyText =
+            searchResult.description ||
+            searchResult.cooperationItems[0]?.title ||
+            '操作手册'
+
+          completeGuideReply(flowId, assistantMessageId, replyText, {
+            conversationId: conversationId.value,
+            routeCard: undefined,
+            suggestions: undefined,
+            cooperationItems: searchResult.cooperationItems,
+            disambiguationCandidates: undefined,
+            disambiguationQuery: undefined,
+            projectContext: undefined,
+            requestMode: 'global',
+            speak: false,
           })
           return
         }
@@ -1425,6 +1471,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
           conversationId: conversationId.value,
           routeCard,
           suggestions: undefined,
+          cooperationItems: undefined,
           disambiguationCandidates:
             searchResult.intent === 'disambiguation'
               ? searchResult.candidates
@@ -1433,6 +1480,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
             searchResult.intent === 'disambiguation' ? question : undefined,
           projectContext: undefined,
           requestMode: 'global',
+          speak: false,
         })
         if (searchResult.intent === 'recent_projects') {
           demoOptions.onOpenRecentProjects?.()
@@ -1457,7 +1505,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
           streamSpeechText ||
           markdownToSpeechText(latestBodyMarkdown || partialBody)
 
-        if (partialSpeechText) {
+        if (shouldSpeak && partialSpeechText) {
           if (targetMessage) {
             targetMessage.pending = false
             targetMessage.engine = 'guide'
@@ -1879,15 +1927,20 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     externalMessages: DemoMessage[],
   ) => {
     cancelCurrentFlow({ persistHistory: false })
-    messages.value = externalMessages.map((message) => ({
-      ...message,
-      pending: false,
-      thinkCollapsed: message.thinkCollapsed ?? true,
-      renderBlocks:
-        message.role === 'assistant'
-          ? splitMarkdownRenderBlocks(message.content)
-          : undefined,
-    }))
+    messages.value = externalMessages.map((message) => {
+      const parsedReply =
+        message.role === 'assistant' ? parseReplyContent(message.content) : null
+
+      return {
+        ...message,
+        pending: false,
+        content: parsedReply?.bodyMarkdown || message.content,
+        thinkContent: parsedReply?.thinkMarkdown || message.thinkContent,
+        thinkCollapsed: message.thinkCollapsed ?? true,
+        renderMode: message.role === 'user' ? 'plain' : 'markdown',
+        renderBlocks: parsedReply?.renderBlocks,
+      }
+    })
     conversationId.value = ''
     projectConversationId.value = ''
     selectedProjectContext.value = null

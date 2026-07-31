@@ -62,6 +62,8 @@ onBeforeUnmount(() => {
 
 <style scoped lang="less">
 .echarts-block {
+  min-width: 0;
+  max-width: 100%;
   min-height: 280px;
   overflow: hidden;
   border: 1px solid rgba(207, 218, 237, 0.86);
@@ -70,11 +72,13 @@ onBeforeUnmount(() => {
 }
 
 .echarts-block__canvas {
+  max-width: 100%;
   width: 100%;
   height: 280px;
 }
 
 .echarts-block__fallback {
+  max-width: 100%;
   max-height: 280px;
   margin: 0;
   padding: 12px;

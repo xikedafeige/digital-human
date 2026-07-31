@@ -4,6 +4,7 @@
     title="近期项目"
     :footer="null"
     :width="430"
+    :body-style="recentProjectsModalBodyStyle"
     centered
     @cancel="close"
   >
@@ -88,6 +89,10 @@ const loadingMode = ref<'initial' | 'refresh' | 'append' | ''>('')
 const projectsListRef = ref<HTMLElement | null>(null)
 let activeRequest: AbortController | null = null
 const pageSize = 6
+const recentProjectsModalBodyStyle = {
+  height: 'clamp(260px, 58vh, 420px)',
+  overflow: 'hidden',
+}
 const isInitialLoading = computed(() => isLoading.value && loadingMode.value === 'initial')
 const isRefreshing = computed(() => isLoading.value && loadingMode.value === 'refresh')
 const isLoadingMore = computed(() => isLoading.value && loadingMode.value === 'append')
@@ -177,8 +182,8 @@ onBeforeUnmount(() => activeRequest?.abort())
 </script>
 
 <style scoped lang="less">
-.recent-projects-content { position: relative; min-height: 150px; }
-.recent-projects-list { display: grid; gap: 12px; max-height: 58vh; overflow-y: auto; padding: 2px 2px 4px; scrollbar-gutter: stable; }
+.recent-projects-content { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; }
+.recent-projects-list { display: grid; flex: 1; gap: 12px; min-height: 0; overflow-y: auto; padding: 2px 2px 4px; scrollbar-gutter: stable; }
 .recent-project-card { position: relative; display: grid; grid-template-columns: 8px minmax(0, 1fr); gap: 7px 3px; min-height: 128px; padding: 14px 10px 11px; border: 1px solid #dfe2e7; border-radius: 8px; background: #fff; box-shadow: 0 2px 5px rgba(50, 59, 75, .045); }
 .recent-project-card__dot { width: 5px; height: 5px; margin-top: 5px; border-radius: 50%; background: #ff3041; }
 .recent-project-card__main { display: grid; grid-template-columns: minmax(0, 1fr) 96px; align-items: start; gap: 7px; padding-right: 70px; }
@@ -197,7 +202,7 @@ onBeforeUnmount(() => activeRequest?.abort())
 .recent-project-card__actions button { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 8px; border: 0; border-radius: 4px; background: #f5f6fa; color: #404752; font-size: 11px; cursor: pointer; }
 .recent-project-card__actions button :deep(.anticon) { color: #637dff; font-size: 14px; }
 .recent-projects-list__status { display: flex; min-height: 28px; align-items: center; justify-content: center; color: #8b929d; font-size: 11px; text-align: center; }
-.recent-projects-state { display: flex; min-height: 150px; align-items: center; justify-content: center; color: #8b929d; font-size: 12px; text-align: center; }
+.recent-projects-state { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #8b929d; font-size: 12px; text-align: center; }
 .recent-projects-state.is-error { flex-direction: column; gap: 10px; color: #d05b48; }
 .recent-projects-state button { padding: 5px 12px; border: 1px solid #cbd9ef; border-radius: 6px; background: #fff; color: #4384e8; cursor: pointer; }
 .recent-projects-loading-mask { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: rgba(255, 255, 255, .72); color: #8b929d; font-size: 12px; text-align: center; }

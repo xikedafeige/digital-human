@@ -1,5 +1,6 @@
 // 智能引导接口客户端，集中管理联调地址、请求头和响应数据规范化。
 import type {
+  GuideCooperationItem,
   GuideDisambiguationCandidate,
   GuideProjectContext,
   GuideProjectStage,
@@ -81,6 +82,14 @@ interface GuideProjectListPayload {
   total?: unknown
   page?: unknown
   rows?: unknown
+}
+
+interface GuideCooperationPayload {
+  title?: unknown
+  content?: unknown
+  score?: unknown
+  metadata?: unknown
+  [key: string]: unknown
 }
 
 export interface GuideProjectCard {
@@ -175,6 +184,14 @@ const pickNumber = (...values: unknown[]) => {
 const pickRecordArray = (value: unknown) =>
   Array.isArray(value)
     ? value.filter((item): item is string => typeof item === 'string')
+    : []
+
+const pickRecordObjects = (value: unknown) =>
+  Array.isArray(value)
+    ? value.filter(
+        (item): item is GuideCooperationPayload =>
+          Boolean(item) && typeof item === 'object' && !Array.isArray(item),
+      )
     : []
 
 const ACTION_LABELS: Record<string, string> = {
@@ -434,6 +451,7 @@ export interface GuideSearchResult {
   guideStage: string
   route: GuideSearchRoute | null
   candidates: GuideDisambiguationCandidate[]
+  cooperationItems: GuideCooperationItem[]
 }
 
 export interface GuideStreamResult {
@@ -509,6 +527,17 @@ const normalizeSearchResult = (
         })
         .filter((candidate) => candidate.label)
     : []
+  const cooperationItems = pickRecordObjects(raw.items)
+    .map((item) => ({
+      title: pickString(item.title),
+      content: pickString(item.content),
+      score: pickNumber(item.score),
+      metadata:
+        item.metadata && typeof item.metadata === 'object'
+          ? (item.metadata as Record<string, unknown>)
+          : undefined,
+    }))
+    .filter((item) => item.title || item.content)
 
   return {
     intent: pickString(raw.intent),
@@ -527,6 +556,7 @@ const normalizeSearchResult = (
         }
       : null,
     candidates,
+    cooperationItems,
   }
 }
 

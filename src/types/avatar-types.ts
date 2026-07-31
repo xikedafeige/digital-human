@@ -24,6 +24,13 @@ export interface GuideRouteCard {
   description?: string
 }
 
+export interface GuideCooperationItem {
+  title: string
+  content: string
+  score?: number | null
+  metadata?: Record<string, unknown>
+}
+
 export interface GuideDisambiguationCandidate {
   id: string
   label: string
@@ -61,6 +68,7 @@ export interface DemoMessage {
   renderBlocks?: MessageRenderBlock[]
   routeCard?: GuideRouteCard
   suggestions?: string[]
+  cooperationItems?: GuideCooperationItem[]
   disambiguationCandidates?: GuideDisambiguationCandidate[]
   disambiguationQuery?: string
   selectedDisambiguationCandidateId?: string

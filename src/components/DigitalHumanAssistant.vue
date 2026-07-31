@@ -130,6 +130,27 @@
 										<ArrowRightOutlined />
 									</button>
 
+									<section v-if="message.cooperationItems?.length" class="assistant-message__cooperation"
+										aria-label="操作手册">
+										<strong>操作手册</strong>
+										<ul>
+											<li v-for="(item, index) in message.cooperationItems" :key="`${message.id}-cooperation-${index}`">
+												<button type="button" class="assistant-message__cooperation-card" @click="notifyDeveloping">
+													<span class="assistant-message__cooperation-main">
+														<span class="assistant-message__cooperation-title-row">
+															<strong>{{ item.title }}</strong>
+															<small v-if="item.score !== undefined && item.score !== null">
+																{{ typeof item.score === 'number' ? item.score.toFixed(2) : item.score }}
+															</small>
+														</span>
+														<p v-if="item.content">{{ item.content }}</p>
+													</span>
+													<ArrowRightOutlined />
+												</button>
+											</li>
+										</ul>
+									</section>
+
 									<section v-if="message.suggestions?.length" class="assistant-message__suggestions" aria-label="建议追问">
 										<strong>建议追问</strong>
 										<ul>
@@ -1464,6 +1485,8 @@ onBeforeUnmount(() => {
 }
 
 .assistant-message {
+	min-width: 0;
+	max-width: 100%;
 	padding: 12px 14px;
 	border-radius: 18px;
 	background: #f4f8ff;
@@ -1543,21 +1566,32 @@ onBeforeUnmount(() => {
 
 .assistant-message__plain {
 	margin: 0;
+	max-width: 100%;
 	font-size: 14px;
 	line-height: 1.6;
 	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	word-break: break-word;
 }
 
 .assistant-message__markdown {
+	min-width: 0;
+	max-width: 100%;
 	color: inherit;
 	font-family: inherit;
 	font-size: 14px;
 	line-height: 1.6;
 	word-break: break-word;
+	overflow-wrap: anywhere;
 }
 
 .assistant-message__content-block+.assistant-message__content-block {
 	margin-top: 10px;
+}
+
+.assistant-message__content-block {
+	min-width: 0;
+	max-width: 100%;
 }
 
 .assistant-message__markdown :deep(*:first-child) {
@@ -1821,6 +1855,7 @@ onBeforeUnmount(() => {
 .assistant-message__follow {
 	margin-top: 10px;
 	padding: 10px 12px;
+	max-width: 100%;
 	border-radius: 14px;
 	background: rgba(79, 120, 255, 0.08);
 	color: #8a97ad;
@@ -1837,6 +1872,102 @@ onBeforeUnmount(() => {
 
 .assistant-message__follow-rest {
 	color: #8a97ad;
+}
+
+.assistant-message__cooperation {
+	display: grid;
+	gap: 7px;
+	min-width: 0;
+	max-width: 100%;
+	margin-top: 10px;
+	padding: 10px 12px;
+	border-radius: 10px;
+	background: #f7f8fb;
+}
+
+.assistant-message__cooperation>strong {
+	color: #68758a;
+	font-size: 11px;
+	line-height: 17px;
+}
+
+.assistant-message__cooperation ul {
+	display: grid;
+	gap: 8px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.assistant-message__cooperation-card {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	min-width: 0;
+	max-width: 100%;
+	width: 100%;
+	padding: 10px 12px;
+	border: 1px solid rgba(179, 199, 240, 0.88);
+	border-radius: 10px;
+	background: #fff;
+	color: #46658f;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.assistant-message__cooperation-card:hover {
+	border-color: #7aa4f7;
+	background: #eef5ff;
+	color: #356bd0;
+}
+
+.assistant-message__cooperation-card :deep(.anticon) {
+	flex: none;
+	font-size: 13px;
+}
+
+.assistant-message__cooperation-main {
+	display: grid;
+	flex: 1;
+	min-width: 0;
+	gap: 4px;
+}
+
+.assistant-message__cooperation-title-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+
+.assistant-message__cooperation-title-row strong,
+.assistant-message__cooperation-title-row small,
+.assistant-message__cooperation-main p {
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
+.assistant-message__cooperation-title-row strong {
+	flex: 1;
+	color: #315a9f;
+	font-size: 12px;
+	line-height: 18px;
+}
+
+.assistant-message__cooperation-title-row small {
+	flex: none;
+	color: #7b8da9;
+	font-size: 10px;
+	line-height: 16px;
+}
+
+.assistant-message__cooperation-main p {
+	margin: 0;
+	color: #5d6d84;
+	font-size: 11px;
+	line-height: 1.6;
 }
 
 .assistant-message__speech-progress {
@@ -2499,6 +2630,8 @@ onBeforeUnmount(() => {
 	align-items: center;
 	justify-content: space-between;
 	gap: 12px;
+	min-width: 0;
+	max-width: 100%;
 	width: 100%;
 	margin-top: 10px;
 	padding: 11px 12px;
@@ -2506,6 +2639,7 @@ onBeforeUnmount(() => {
 	border-radius: 10px;
 	background: #f4f8ff;
 	color: #3d6fc6;
+	font: inherit;
 	text-align: left;
 	cursor: pointer;
 }
@@ -2519,8 +2653,10 @@ onBeforeUnmount(() => {
 .assistant-message__route-card strong,
 .assistant-message__route-card small {
 	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
+	text-overflow: clip;
+	white-space: normal;
+	overflow-wrap: anywhere;
+	word-break: break-word;
 }
 
 .assistant-message__route-card strong {
@@ -2533,6 +2669,8 @@ onBeforeUnmount(() => {
 	color: #7b8da9;
 	font-size: 10px;
 	line-height: 16px;
+	overflow-wrap: anywhere;
+	word-break: break-word;
 }
 
 .assistant-message__route-card :deep(.anticon) {
@@ -2541,6 +2679,8 @@ onBeforeUnmount(() => {
 }
 
 .assistant-message__suggestions {
+	min-width: 0;
+	max-width: 100%;
 	margin-top: 10px;
 	padding: 10px 12px;
 	border-radius: 10px;
@@ -2563,10 +2703,17 @@ onBeforeUnmount(() => {
 	line-height: 18px;
 }
 
+.assistant-message__suggestions li {
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
 .assistant-message__disambiguation {
 	display: grid;
 	gap: 7px;
 	margin-top: 10px;
+	min-width: 0;
+	max-width: 100%;
 }
 
 .assistant-message__disambiguation>strong {
@@ -2580,6 +2727,8 @@ onBeforeUnmount(() => {
 	align-items: center;
 	justify-content: space-between;
 	gap: 10px;
+	min-width: 0;
+	max-width: 100%;
 	width: 100%;
 	padding: 9px 10px;
 	border: 1px solid rgba(179, 199, 240, 0.88);
@@ -2597,6 +2746,8 @@ onBeforeUnmount(() => {
 .assistant-message__candidate-card>span {
 	min-width: 0;
 	flex: 1;
+	overflow-wrap: anywhere;
+	word-break: break-word;
 }
 
 .assistant-message__candidate-card :deep(.anticon) {
