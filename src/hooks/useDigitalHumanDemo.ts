@@ -14,8 +14,8 @@ import type {
   SpeechSynthesisResult,
 } from '@/types/avatar-types'
 import {
-  askGuideProject,
   searchGuide,
+  streamGuideProject,
   streamGuideQa,
   type GuideProjectCard,
   type GuideSearchRoute,
@@ -29,7 +29,7 @@ import {
 import { useSpeechRecognition } from './useSpeechRecognition'
 import { useSpeechSynthesis } from './useSpeechSynthesis'
 
-const THINKING_PLACEHOLDER = '思考中...'
+const THINKING_PLACEHOLDER = ''
 const VOICE_AUTO_SEND_DELAY_MS = 500
 const MAX_CONCURRENT_TTS_REQUESTS = 2
 const LEAD_SPEECH_SEGMENT_EFFECTIVE_CHARS = 24
@@ -270,7 +270,10 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
       return
     }
 
-    speechCompletedMessageIds.value = [...speechCompletedMessageIds.value, messageId]
+    speechCompletedMessageIds.value = [
+      ...speechCompletedMessageIds.value,
+      messageId,
+    ]
   }
 
   // 新回复、重新生成等场景会清除旧完成标记，避免操作栏提前出现。
@@ -356,7 +359,8 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
   }
 
   // 判断字符是否适合作为语音分段的句末边界。
-  const isSentenceEndChar = (value: string) => SENTENCE_END_CHARS.includes(value)
+  const isSentenceEndChar = (value: string) =>
+    SENTENCE_END_CHARS.includes(value)
 
   // 统计非空白字符数量，用于控制 TTS 分段长度。
   const countEffectiveChars = (text: string) => {
@@ -485,11 +489,12 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
         message.pending = false
       }
     })
-
   }
 
   // 根据当前分段播放进度计算整条回复的播报进度。
-  const updateSpeechOverallProgress = (segmentProgress = speechPlaybackProgress.value) => {
+  const updateSpeechOverallProgress = (
+    segmentProgress = speechPlaybackProgress.value,
+  ) => {
     if (!activePlaybackItem || totalSpeechEffectiveChars <= 0) {
       speechOverallProgress.value = 0
       return
@@ -497,7 +502,8 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
 
     const currentSegmentEffectiveChars = Math.max(
       0,
-      activePlaybackItem.endEffectiveChar - activePlaybackItem.startEffectiveChar,
+      activePlaybackItem.endEffectiveChar -
+        activePlaybackItem.startEffectiveChar,
     )
     const playedEffectiveChars =
       completedSpeechEffectiveChars +
@@ -505,7 +511,10 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
 
     speechOverallProgress.value = Math.max(
       0,
-      Math.min(1, playedEffectiveChars / Math.max(1, totalSpeechEffectiveChars)),
+      Math.min(
+        1,
+        playedEffectiveChars / Math.max(1, totalSpeechEffectiveChars),
+      ),
     )
   }
 
@@ -545,10 +554,9 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     }
 
     targetMessage.content = latestBodyMarkdown || displayedSpeechText
-    targetMessage.renderBlocks =
-      latestMessageRenderBlocks?.length
-        ? latestMessageRenderBlocks
-        : splitMarkdownRenderBlocks(targetMessage.content)
+    targetMessage.renderBlocks = latestMessageRenderBlocks?.length
+      ? latestMessageRenderBlocks
+      : splitMarkdownRenderBlocks(targetMessage.content)
     targetMessage.pending = false
     targetMessage.renderMode = 'markdown'
   }
@@ -584,8 +592,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     latestMessageRenderBlocks = content.renderBlocks
 
     const nextBodyContent =
-      displayedSpeechText ||
-      (content.thinkMarkdown ? '' : THINKING_PLACEHOLDER)
+      displayedSpeechText || (content.thinkMarkdown ? '' : THINKING_PLACEHOLDER)
 
     targetMessage.content = nextBodyContent
     targetMessage.thinkContent = content.thinkMarkdown || ''
@@ -600,9 +607,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
       return
     }
 
-    targetMessage.thinkCollapsed = !content.thinkCompleted
-      ? false
-      : true
+    targetMessage.thinkCollapsed = !content.thinkCompleted ? false : true
   }
 
   // 检查回复、TTS 和播放队列是否全部完成，满足条件时结束整轮流程。
@@ -615,7 +620,11 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
       return
     }
 
-    if (activeTtsRequestCount > 0 || ttsQueue.length > 0 || !replyStreamCompleted) {
+    if (
+      activeTtsRequestCount > 0 ||
+      ttsQueue.length > 0 ||
+      !replyStreamCompleted
+    ) {
       status.value = 'thinking'
       return
     }
@@ -719,9 +728,12 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     let synthesized: SpeechSynthesisResult
 
     try {
-      synthesized = await speechSynthesisClient.synthesize(normalizedSpeechText, {
-        signal: ttsController.signal,
-      })
+      synthesized = await speechSynthesisClient.synthesize(
+        normalizedSpeechText,
+        {
+          signal: ttsController.signal,
+        },
+      )
     } catch (error) {
       if (
         ttsController.signal.aborted ||
@@ -1121,7 +1133,9 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
         }
 
         if (Array.isArray(value)) {
-          value.forEach((item) => targetUrl.searchParams.append(key, String(item)))
+          value.forEach((item) =>
+            targetUrl.searchParams.append(key, String(item)),
+          )
           return
         }
 
@@ -1144,7 +1158,14 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     flowId: number,
     messageId: string,
     markdown: string,
-    messageOptions: Pick<DemoMessage, 'conversationId' | 'routeCard' | 'suggestions' | 'projectContext' | 'requestMode'>,
+    messageOptions: Pick<
+      DemoMessage,
+      | 'conversationId'
+      | 'routeCard'
+      | 'suggestions'
+      | 'projectContext'
+      | 'requestMode'
+    >,
   ) => {
     const parsedContent = parseReplyContent(markdown)
     const targetMessage = getMessageById(messageId)
@@ -1178,10 +1199,13 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     source: DemoMessage['source'],
     options: ReplyFlowOptions = {},
   ) => {
-    const projectContext = options.projectContext === undefined
-      ? selectedProjectContext.value
-      : options.projectContext
-    const requestMode: DemoMessage['requestMode'] = projectContext ? 'project' : 'global'
+    const projectContext =
+      options.projectContext === undefined
+        ? selectedProjectContext.value
+        : options.projectContext
+    const requestMode: DemoMessage['requestMode'] = projectContext
+      ? 'project'
+      : 'global'
     const reusableMessage = options.reuseMessageId
       ? getMessageById(options.reuseMessageId)
       : null
@@ -1189,14 +1213,14 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
       reusableMessage?.role === 'assistant'
         ? reusableMessage
         : createMessage('assistant', THINKING_PLACEHOLDER, {
-             pending: true,
-             source,
-             engine: 'guide',
-             renderMode: 'markdown',
-             thinkCollapsed: true,
-             projectContext: projectContext ?? undefined,
-             requestMode,
-           })
+            pending: true,
+            source,
+            engine: 'guide',
+            renderMode: 'markdown',
+            thinkCollapsed: true,
+            projectContext: projectContext ?? undefined,
+            requestMode,
+          })
     const flowId = activeFlowId + 1
 
     activeFlowId = flowId
@@ -1234,10 +1258,40 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     void (async () => {
       try {
         if (projectContext) {
-          const result = await askGuideProject(
+          const projectRequestConversationId = projectConversationId.value
+          const isCurrentProjectContext = () =>
+            selectedProjectContext.value?.commissionTaskId ===
+              projectContext.commissionTaskId &&
+            selectedProjectContext.value?.stage === projectContext.stage
+          const result = await streamGuideProject(
             projectContext,
             question,
-            projectConversationId.value,
+            projectRequestConversationId,
+            {
+              onConversationId: (nextConversationId) => {
+                if (flowId === activeFlowId && isCurrentProjectContext()) {
+                  projectConversationId.value = nextConversationId
+                }
+              },
+              onText: (answer) => {
+                if (flowId !== activeFlowId) {
+                  return
+                }
+
+                const parsedContent = parseReplyContent(answer)
+                updateAssistantMessage(assistantMessageId, parsedContent, {
+                  pending: true,
+                  engine: 'guide',
+                  conversationId: projectRequestConversationId,
+                })
+                enqueueSpeechSegments(
+                  flowId,
+                  assistantMessageId,
+                  parsedContent.speechText,
+                  'guide',
+                )
+              },
+            },
             guideController.signal,
           )
           if (flowId !== activeFlowId) {
@@ -1245,11 +1299,8 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
           }
 
           const nextProjectConversationId =
-            result.conversationId || projectConversationId.value
-          const isCurrentProjectContext =
-            selectedProjectContext.value?.commissionTaskId === projectContext.commissionTaskId &&
-            selectedProjectContext.value?.stage === projectContext.stage
-          if (isCurrentProjectContext) {
+            result.conversationId || projectRequestConversationId
+          if (isCurrentProjectContext()) {
             projectConversationId.value = nextProjectConversationId
           }
           if (!result.answer) {
@@ -1275,7 +1326,8 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
           return
         }
 
-        conversationId.value = searchResult.conversationId || conversationId.value
+        conversationId.value =
+          searchResult.conversationId || conversationId.value
         if (searchResult.intent === 'qa') {
           const streamResult = await streamGuideQa(
             question,
@@ -1311,7 +1363,8 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
             return
           }
 
-          conversationId.value = streamResult.conversationId || conversationId.value
+          conversationId.value =
+            streamResult.conversationId || conversationId.value
           completeGuideReply(flowId, assistantMessageId, streamResult.answer, {
             conversationId: conversationId.value,
             routeCard: undefined,
@@ -1322,9 +1375,10 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
           return
         }
 
-        const routeCard = searchResult.intent === 'navigation'
-          ? buildGuideRouteCard(searchResult.route)
-          : undefined
+        const routeCard =
+          searchResult.intent === 'navigation'
+            ? buildGuideRouteCard(searchResult.route)
+            : undefined
         const replyText = searchResult.description || routeCard?.title || ''
         if (!replyText) {
           throw new Error('智能引导未返回可展示内容')
@@ -1356,7 +1410,9 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
           targetMessage.content !== THINKING_PLACEHOLDER
             ? targetMessage.content.trim()
             : ''
-        const partialSpeechText = streamSpeechText || markdownToPlainText(latestBodyMarkdown || partialBody)
+        const partialSpeechText =
+          streamSpeechText ||
+          markdownToPlainText(latestBodyMarkdown || partialBody)
 
         if (partialSpeechText) {
           if (targetMessage) {
@@ -1399,12 +1455,19 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     }
 
     const projectContext = selectedProjectContext.value
-    if (projectContext && (!projectContext.stage || !projectContext.commissionTaskId)) {
+    if (
+      projectContext &&
+      (!projectContext.stage || !projectContext.commissionTaskId)
+    ) {
       showTransientInputHint('项目上下文不完整，请重新选择项目')
       return
     }
 
-    if (isBusy.value || isRecording.value || isAwaitingVoiceRecognitionResult.value) {
+    if (
+      isBusy.value ||
+      isRecording.value ||
+      isAwaitingVoiceRecognitionResult.value
+    ) {
       cancelCurrentFlow()
     }
 
@@ -1546,7 +1609,10 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
       totalSpeechEffectiveChars > 0
         ? Math.max(
             0,
-            Math.min(1, completedSpeechEffectiveChars / totalSpeechEffectiveChars),
+            Math.min(
+              1,
+              completedSpeechEffectiveChars / totalSpeechEffectiveChars,
+            ),
           )
         : 0
     drainPlaybackQueue(flowId)
@@ -1584,7 +1650,9 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
 
   // 找到当前回复前最近的用户问题，并用同一条 assistant 消息承载重新生成结果。
   const regenerateAssistantMessage = (messageId: string) => {
-    const messageIndex = messages.value.findIndex((message) => message.id === messageId)
+    const messageIndex = messages.value.findIndex(
+      (message) => message.id === messageId,
+    )
     const targetMessage = messages.value[messageIndex]
 
     if (messageIndex === -1 || targetMessage?.role !== 'assistant') {
@@ -1600,7 +1668,11 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
       return
     }
 
-    if (isBusy.value || isRecording.value || isAwaitingVoiceRecognitionResult.value) {
+    if (
+      isBusy.value ||
+      isRecording.value ||
+      isAwaitingVoiceRecognitionResult.value
+    ) {
       cancelCurrentFlow()
     }
 
@@ -1630,7 +1702,9 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
   const readMessageAloud = (messageId: string) => {
     const targetMessage = getMessageById(messageId)
     const speechText = targetMessage
-      ? normalizeSpeechText(markdownToPlainText(targetMessage.content) || targetMessage.content)
+      ? normalizeSpeechText(
+          markdownToPlainText(targetMessage.content) || targetMessage.content,
+        )
       : ''
 
     if (!targetMessage || targetMessage.role !== 'assistant' || !speechText) {
@@ -1639,7 +1713,11 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
 
     clearSpeechLoading(messageId)
 
-    if (isBusy.value || isRecording.value || isAwaitingVoiceRecognitionResult.value) {
+    if (
+      isBusy.value ||
+      isRecording.value ||
+      isAwaitingVoiceRecognitionResult.value
+    ) {
       cancelCurrentFlow()
     } else {
       cancelPendingSpeechSynthesis()
@@ -1712,7 +1790,9 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
   }
 
   // 装载智能引导服务端会话消息，仅用于只读回放，不写入 localStorage。
-  const loadExternalConversationMessages = (externalMessages: DemoMessage[]) => {
+  const loadExternalConversationMessages = (
+    externalMessages: DemoMessage[],
+  ) => {
     cancelCurrentFlow({ persistHistory: false })
     messages.value = externalMessages.map((message) => ({
       ...message,
@@ -1753,7 +1833,11 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
       currentContext?.commissionTaskId === nextContext.commissionTaskId &&
       currentContext.stage === nextContext.stage
 
-    if (isBusy.value || isRecording.value || isAwaitingVoiceRecognitionResult.value) {
+    if (
+      isBusy.value ||
+      isRecording.value ||
+      isAwaitingVoiceRecognitionResult.value
+    ) {
       cancelCurrentFlow()
     }
 

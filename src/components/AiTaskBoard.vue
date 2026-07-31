@@ -30,7 +30,7 @@ import { message as antMessage } from 'ant-design-vue'
 import { ArrowUpOutlined, CheckCircleOutlined, FileSearchOutlined } from '@ant-design/icons-vue'
 
 const tasks = DIGITAL_HUMAN_BOARD_TASKS
-const notifyDeveloping = () => antMessage.info(DIGITAL_HUMAN_DEVELOPMENT_NOTICE)
+const notifyDeveloping = () => antMessage.info(DIGITAL_HUMAN_DEVELOPMENT_NOTICE, 0.8)
 </script>
 
 <style scoped lang="less">

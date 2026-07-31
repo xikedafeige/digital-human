@@ -53,8 +53,8 @@
 				</div>
 			</header>
 
-			<EnhancedTodoPanel v-show="activeTab === 'todo'" :active="activeTab === 'todo'" :aria-hidden="activeTab !== 'todo'"
-				@select-project="handleProjectSelected" />
+			<EnhancedTodoPanel v-show="activeTab === 'todo'" :active="activeTab === 'todo'"
+				:aria-hidden="activeTab !== 'todo'" @select-project="handleProjectSelected" />
 			<AiTaskBoard v-show="activeTab === 'board'" :aria-hidden="activeTab !== 'board'" />
 			<div v-show="activeTab === 'assistant'" class="assistant-panel__body" :aria-hidden="activeTab !== 'assistant'">
 				<div class="assistant-panel__stage-shell">
@@ -88,6 +88,11 @@
 									<time>{{ formatTime(message.timestamp) }}</time>
 								</header>
 
+								<div v-if="isMessageLoading(message)" class="assistant-message__loading" aria-live="polite">
+									<span class="assistant-message__loading-spinner" aria-hidden="true"></span>
+									<span>{{ getMessageLoadingText(message) }}</span>
+								</div>
+
 								<div v-if="message.thinkContent" class="assistant-message__think"
 									:class="{ 'is-collapsed': message.thinkCollapsed }">
 									<button type="button" class="assistant-message__think-toggle" @click="handleThinkToggle(message.id)">
@@ -101,13 +106,14 @@
 										v-html="renderMessageHtml(message.thinkContent)"></div>
 								</div>
 
-								<div v-if="speechLoadingMessageId === message.id" class="assistant-message__speech-loading">
-									<span></span>
-									语音加载中...
-								</div>
-
-								<div v-if="message.renderMode === 'markdown' && message.content" class="assistant-message__markdown"
-									v-html="renderMessageHtml(message.content)"></div>
+								<template v-if="message.renderMode === 'markdown' && message.content">
+									<div v-for="block in getMessageRenderBlocks(message)" :key="block.id"
+										class="assistant-message__content-block">
+										<div v-if="block.type === 'markdown'" class="assistant-message__markdown"
+											v-html="renderMessageHtml(block.content)"></div>
+										<EChartsBlock v-else :option="block.option" :raw="block.raw" />
+									</div>
+								</template>
 								<p v-else-if="message.content" class="assistant-message__plain">
 									{{ message.content }}
 								</p>
@@ -121,8 +127,7 @@
 									<ArrowRightOutlined />
 								</button>
 
-								<section v-if="message.suggestions?.length" class="assistant-message__suggestions"
-									aria-label="建议追问">
+								<section v-if="message.suggestions?.length" class="assistant-message__suggestions" aria-label="建议追问">
 									<strong>建议追问</strong>
 									<ul>
 										<li v-for="suggestion in message.suggestions" :key="suggestion">{{ suggestion }}</li>
@@ -206,7 +211,9 @@
 				<footer class="assistant-input">
 					<div class="assistant-input__composer">
 						<div v-if="selectedProjectContext" class="assistant-input__attachment" aria-label="当前项目附件">
-							<span class="assistant-input__attachment-icon"><PaperClipOutlined /></span>
+							<span class="assistant-input__attachment-icon">
+								<PaperClipOutlined />
+							</span>
 							<span class="assistant-input__attachment-content">
 								<strong>针对绩效任务提问</strong>
 								<small>{{ selectedProjectContext.projectName || '未知任务' }}</small>
@@ -254,7 +261,7 @@
 							</a-button>
 							<span></span>
 							<a-button class="assistant-input__tool-button" type="text" aria-label="历史记录" data-tooltip="历史记录"
-						:class="{ 'is-active': isHistoryPanelOpen }" @click="handleHistoryOpen">
+								:class="{ 'is-active': isHistoryPanelOpen }" @click="handleHistoryOpen">
 								<HistoryOutlined />
 							</a-button>
 							<a-button class="assistant-input__tool-button" type="text" aria-label="近期项目" data-tooltip="近期项目"
@@ -325,12 +332,17 @@ import {
 	StopOutlined,
 } from '@ant-design/icons-vue'
 import type { DemoMessage } from '@/types/avatar-types'
-import { markdownToPlainText, renderMarkdownToHtml } from '@/utils/message-content'
+import {
+	markdownToPlainText,
+	renderMarkdownToHtml,
+	splitMarkdownRenderBlocks,
+} from '@/utils/message-content'
 import { useDigitalHumanDemo } from '@/hooks/useDigitalHumanDemo'
 import VideoDigitalHumanStage from './VideoDigitalHumanStage.vue'
 import EnhancedTodoPanel from './EnhancedTodoPanel.vue'
 import AiTaskBoard from './AiTaskBoard.vue'
 import ConversationHistoryModal from './ConversationHistoryModal.vue'
+import EChartsBlock from './EChartsBlock.vue'
 import RecentProjectsModal from './RecentProjectsModal.vue'
 import {
 	type GuideConversationMessage,
@@ -420,19 +432,32 @@ type MessageFeedback = 'like' | 'dislike'
 type MessageActionState = 'copy' | 'regenerate' | 'read'
 let copiedMessageTimer: number | null = null
 const messageActionStateTimers = new Map<string, number>()
-const notifyDeveloping = () => antMessage.info(DIGITAL_HUMAN_DEVELOPMENT_NOTICE)
+const notifyDeveloping = () => antMessage.info(DIGITAL_HUMAN_DEVELOPMENT_NOTICE, 0.8)
 const showSuggestions = computed(() =>
 	suggestions.value.length > 0 && !messages.value.some((message) => message.role === 'user'),
 )
 
 const roleLabelMap: Record<DemoMessage['role'], string> = {
 	user: '你',
-	assistant: '数字人',
+	assistant: '小绩',
 	system: '系统',
 }
 
+const isMessageLoading = (message: DemoMessage) =>
+	message.role === 'assistant' &&
+	(speechLoadingMessageId.value === message.id ||
+		(message.pending && status.value === 'thinking'))
+
+const getMessageLoadingText = (message: DemoMessage) =>
+	speechLoadingMessageId.value === message.id ? '语音加载中...' : '小绩正在思考...'
+
 // 统一渲染 Markdown 消息，保持模板中 v-html 来源可控。
 const renderMessageHtml = (content: string) => renderMarkdownToHtml(content)
+
+const getMessageRenderBlocks = (message: DemoMessage) =>
+	message.renderBlocks?.length
+		? message.renderBlocks
+		: splitMarkdownRenderBlocks(message.content)
 
 const getMessagePlainText = (message: DemoMessage) =>
 	markdownToPlainText(message.content) || message.content
@@ -991,7 +1016,7 @@ onBeforeUnmount(() => {
 	overflow-y: auto;
 }
 
-.assistant-history-group + .assistant-history-group {
+.assistant-history-group+.assistant-history-group {
 	margin-top: 14px;
 	padding-top: 14px;
 	border-top: 1px solid rgba(223, 232, 248, 0.76);
@@ -1390,6 +1415,40 @@ onBeforeUnmount(() => {
 	opacity: 0.82;
 }
 
+.assistant-message__loading {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	margin: 0 0 9px;
+	color: #697b9b;
+	font-size: 12px;
+	font-weight: 700;
+	line-height: 1.2;
+}
+
+
+.assistant-message__loading-spinner {
+	box-sizing: border-box;
+	width: 13px;
+	height: 13px;
+	border-radius: 50%;
+	border: 2px solid rgba(93, 133, 239, 0.22);
+	border-top-color: #5d85ef;
+	animation: assistant-message-loading-spin 0.72s linear infinite;
+}
+
+@keyframes assistant-message-loading-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.assistant-message__loading-spinner {
+		animation: none;
+	}
+}
+
 .assistant-message.is-speech-active {
 	box-shadow:
 		inset 0 0 0 1px rgba(79, 120, 255, 0.18),
@@ -1425,6 +1484,10 @@ onBeforeUnmount(() => {
 	font-size: 14px;
 	line-height: 1.6;
 	word-break: break-word;
+}
+
+.assistant-message__content-block+.assistant-message__content-block {
+	margin-top: 10px;
 }
 
 .assistant-message__markdown :deep(*:first-child) {
@@ -1561,29 +1624,6 @@ onBeforeUnmount(() => {
 	padding: 0 12px 12px;
 	color: #5b6c88;
 	font-size: 13px;
-}
-
-.assistant-message__speech-loading {
-	display: inline-flex;
-	align-items: center;
-	gap: 7px;
-	width: fit-content;
-	margin: 0 0 8px;
-	padding: 6px 9px;
-	border-radius: 10px;
-	background: rgba(79, 120, 255, 0.08);
-	color: #5f72a0;
-	font-size: 12px;
-	font-weight: 700;
-	line-height: 1.2;
-}
-
-.assistant-message__speech-loading span {
-	width: 6px;
-	height: 6px;
-	border-radius: 50%;
-	background: #5d85ef;
-	box-shadow: 0 0 0 4px rgba(93, 133, 239, 0.12);
 }
 
 .assistant-message__actions {
@@ -2356,7 +2396,7 @@ onBeforeUnmount(() => {
 	cursor: pointer;
 }
 
-.assistant-message__route-card > span {
+.assistant-message__route-card>span {
 	display: grid;
 	min-width: 0;
 	gap: 2px;
@@ -2393,7 +2433,7 @@ onBeforeUnmount(() => {
 	background: #f7f8fb;
 }
 
-.assistant-message__suggestions > strong {
+.assistant-message__suggestions>strong {
 	color: #68758a;
 	font-size: 11px;
 	line-height: 17px;

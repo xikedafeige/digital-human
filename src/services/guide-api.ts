@@ -4,7 +4,7 @@ import type {
   GuideProjectStage,
 } from '@/types/avatar-types'
 
-const GUIDE_API_BASE_URL = 'http://ffa56a44.natappfree.cc'
+const GUIDE_API_BASE_URL = 'http://da6a2a65.natappfree.cc'
 const GUIDE_API_PREFIX = '/api/v1/guide'
 const GUIDE_USER_ID = '1696097681761374208'
 const GUIDE_REQUEST_ID = ''
@@ -170,7 +170,9 @@ const pickNumber = (...values: unknown[]) => {
 }
 
 const pickRecordArray = (value: unknown) =>
-  Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+  Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : []
 
 const ACTION_LABELS: Record<string, string> = {
   qa: '提问',
@@ -201,7 +203,7 @@ const resolveProjectStage = (
   category: string,
 ): GuideProjectStage | '' =>
   TODO_STAGE_MAP[category] ??
-  (taskType === null ? '' : TASK_TYPE_STAGE_MAP[taskType] ?? '')
+  (taskType === null ? '' : (TASK_TYPE_STAGE_MAP[taskType] ?? ''))
 
 const normalizeProject = (
   raw: GuideProjectPayload,
@@ -216,7 +218,8 @@ const normalizeProject = (
     raw.task_type_name,
   )
   const stage = resolveProjectStage(taskType, category)
-  const stageName = category || pickString(raw.currentStageName, raw.current_stage_name)
+  const stageName =
+    category || pickString(raw.currentStageName, raw.current_stage_name)
   const urgencyLevel = pickNumber(raw.urgencyLevel, raw.urgency_level)
   const statusText =
     source === 'todo'
@@ -226,7 +229,9 @@ const normalizeProject = (
       : pickString(raw.statusText, raw.status_text, raw.status, '进行中')
   const rawActions = pickRecordArray(raw.cardActions)
   const actions = rawActions.length
-    ? rawActions.map((action) => ACTION_LABELS[action] ?? action).filter(Boolean)
+    ? rawActions
+        .map((action) => ACTION_LABELS[action] ?? action)
+        .filter(Boolean)
     : DEFAULT_TODO_ACTIONS
   const projectName = pickString(
     raw.projectName,
@@ -252,7 +257,14 @@ const normalizeProject = (
     commissionTaskId,
     `${source}-${index}`,
   )
-  const todoId = pickString(raw.todoId, raw.todo_id, raw.id, raw.bpmTaskId, raw.bpm_task_id, id)
+  const todoId = pickString(
+    raw.todoId,
+    raw.todo_id,
+    raw.id,
+    raw.bpmTaskId,
+    raw.bpm_task_id,
+    id,
+  )
   const currentStageName = pickString(
     raw.currentStageName,
     raw.current_stage_name,
@@ -281,14 +293,19 @@ const normalizeProject = (
     currentStageName,
     time: durationDesc || createTime || pickString(raw.deadline),
     deadline: pickString(raw.deadline),
-    initiatorName: pickString(raw.initiatorName, raw.initiator_name, raw.startUserName),
+    initiatorName: pickString(
+      raw.initiatorName,
+      raw.initiator_name,
+      raw.startUserName,
+    ),
     createTime,
     durationDesc,
     statusText,
     actions,
-    isUrgent: source === 'todo'
-      ? urgencyLevel !== null && urgencyLevel >= 4
-      : /紧急|逾期|urgent|overdue/i.test(statusText),
+    isUrgent:
+      source === 'todo'
+        ? urgencyLevel !== null && urgencyLevel >= 4
+        : /紧急|逾期|urgent|overdue/i.test(statusText),
     source,
     commissionTaskId,
     stage,
@@ -299,23 +316,37 @@ const normalizeProject = (
 
 const requestGuide = async <T>(
   path: string,
-  options: { method?: 'GET' | 'POST'; body?: unknown; signal?: AbortSignal } = {},
+  options: {
+    method?: 'GET' | 'POST'
+    body?: unknown
+    signal?: AbortSignal
+  } = {},
 ): Promise<T | null> => {
-  const response = await fetch(`${GUIDE_API_BASE_URL}${GUIDE_API_PREFIX}${path}`, {
-    method: options.method ?? 'GET',
-    headers: {
-      Accept: 'application/json',
-      ...(options.method === 'POST' ? { 'Content-Type': 'application/json' } : {}),
-      ...GUIDE_HEADERS,
+  const response = await fetch(
+    `${GUIDE_API_BASE_URL}${GUIDE_API_PREFIX}${path}`,
+    {
+      method: options.method ?? 'GET',
+      headers: {
+        Accept: 'application/json',
+        ...(options.method === 'POST'
+          ? { 'Content-Type': 'application/json' }
+          : {}),
+        ...GUIDE_HEADERS,
+      },
+      body:
+        options.body === undefined ? undefined : JSON.stringify(options.body),
+      signal: options.signal,
     },
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    signal: options.signal,
-  })
+  )
 
-  const payload = (await response.json().catch(() => null)) as GuideResponse<T> | null
+  const payload = (await response
+    .json()
+    .catch(() => null)) as GuideResponse<T> | null
 
   if (!response.ok) {
-    throw new Error(payload?.message || `智能引导接口请求失败（HTTP ${response.status}）`)
+    throw new Error(
+      payload?.message || `智能引导接口请求失败（HTTP ${response.status}）`,
+    )
   }
 
   if (!payload || payload.code !== 0) {
@@ -335,7 +366,9 @@ export const fetchRecentProjects = async (
     { signal },
   )
   const projects = Array.isArray(payload?.projects) ? payload.projects : []
-  const normalizedProjects = projects.map((project, index) => normalizeProject(project, 'recent', index))
+  const normalizedProjects = projects.map((project, index) =>
+    normalizeProject(project, 'recent', index),
+  )
 
   return {
     projects: normalizedProjects,
@@ -346,22 +379,33 @@ export const fetchRecentProjects = async (
 }
 
 export const fetchTodoProjects = async (signal?: AbortSignal) => {
-  const payload = await requestGuide<GuideProjectListPayload>('/projects/todos?page=1&rows=20', { signal })
+  const payload = await requestGuide<GuideProjectListPayload>(
+    '/projects/todos?page=1&rows=20',
+    { signal },
+  )
   const rawProjects = payload?.projects
   const groups: Record<string, GuideProjectCard[]> = {}
 
   if (Array.isArray(rawProjects)) {
-    groups['全部'] = rawProjects.map((project, index) => normalizeProject(project, 'todo', index))
+    groups['全部'] = rawProjects.map((project, index) =>
+      normalizeProject(project, 'todo', index),
+    )
   } else if (rawProjects && typeof rawProjects === 'object') {
     Object.entries(rawProjects).forEach(([category, projects]) => {
-      groups[category] = projects.map((project, index) => normalizeProject(project, 'todo', index))
+      groups[category] = projects.map((project, index) =>
+        normalizeProject(project, 'todo', index),
+      )
     })
   }
 
-  const all = groups['全部'] ?? Object.entries(groups)
-    .filter(([category]) => category !== '全部')
-    .flatMap(([, projects]) => projects)
-  const dedupedAll = Array.from(new Map(all.map((project) => [project.id, project])).values())
+  const all =
+    groups['全部'] ??
+    Object.entries(groups)
+      .filter(([category]) => category !== '全部')
+      .flatMap(([, projects]) => projects)
+  const dedupedAll = Array.from(
+    new Map(all.map((project) => [project.id, project])).values(),
+  )
 
   return {
     all: dedupedAll,
@@ -388,27 +432,26 @@ export interface GuideSearchResult {
   route: GuideSearchRoute | null
 }
 
-export interface GuideQaStreamResult {
+export interface GuideStreamResult {
   answer: string
   conversationId: string
   requestId: string
   source: string
+  suggestions: string[]
 }
 
-export interface GuideProjectAnswer {
+export interface GuideQaStreamResult extends GuideStreamResult {}
+
+export interface GuideProjectStreamResult extends GuideStreamResult {
   stage: string
   stageName: string
   commissionTaskId: string
-  answer: string
-  references: unknown[]
-  suggestions: string[]
-  source: string
-  conversationId: string
 }
 
-interface GuideQaStreamHandlers {
+interface GuideStreamHandlers {
   onText?: (answer: string, chunk: string) => void
   onConversationId?: (conversationId: string) => void
+  onSuggestions?: (suggestions: string[]) => void
 }
 
 interface GuideSsePayload {
@@ -419,17 +462,22 @@ interface GuideSsePayload {
   content?: unknown
   answer?: unknown
   source?: unknown
+  suggestions?: unknown
   message?: unknown
   data?: Record<string, unknown> | null
 }
 
-const normalizeSearchResult = (raw: Record<string, unknown>): GuideSearchResult => {
-  const rawRoute = raw.route && typeof raw.route === 'object'
-    ? raw.route as Record<string, unknown>
-    : null
-  const rawParams = rawRoute?.params && typeof rawRoute.params === 'object'
-    ? rawRoute.params as Record<string, unknown>
-    : {}
+const normalizeSearchResult = (
+  raw: Record<string, unknown>,
+): GuideSearchResult => {
+  const rawRoute =
+    raw.route && typeof raw.route === 'object'
+      ? (raw.route as Record<string, unknown>)
+      : null
+  const rawParams =
+    rawRoute?.params && typeof rawRoute.params === 'object'
+      ? (rawRoute.params as Record<string, unknown>)
+      : {}
 
   return {
     intent: pickString(raw.intent),
@@ -474,23 +522,25 @@ const extractSseEvents = (buffer: string) => {
   const pendingBuffer = chunks.pop() ?? ''
 
   return {
-    events: chunks.map((chunk) => {
-      let event = 'message'
-      const dataLines: string[] = []
+    events: chunks
+      .map((chunk) => {
+        let event = 'message'
+        const dataLines: string[] = []
 
-      chunk.split('\n').forEach((line) => {
-        if (line.startsWith('event:')) {
-          event = line.slice(6).trim()
-        } else if (line.startsWith('data:')) {
-          dataLines.push(line.slice(5).trimStart())
+        chunk.split('\n').forEach((line) => {
+          if (line.startsWith('event:')) {
+            event = line.slice(6).trim()
+          } else if (line.startsWith('data:')) {
+            dataLines.push(line.slice(5).trimStart())
+          }
+        })
+
+        return {
+          event,
+          data: dataLines.join('\n').trim(),
         }
       })
-
-      return {
-        event,
-        data: dataLines.join('\n').trim(),
-      }
-    }).filter((item) => item.data),
+      .filter((item) => item.data),
     pendingBuffer,
   }
 }
@@ -510,35 +560,49 @@ const parseSsePayload = (rawData: string) => {
 const pickSseString = (payload: GuideSsePayload, ...keys: string[]) => {
   const nested = payload.data ?? {}
   return pickString(
-    ...keys.flatMap((key) => [payload[key as keyof GuideSsePayload], nested[key]]),
+    ...keys.flatMap((key) => [
+      payload[key as keyof GuideSsePayload],
+      nested[key],
+    ]),
   )
 }
 
-export const streamGuideQa = async (
-  query: string,
+const pickSseSuggestions = (payload: GuideSsePayload) => {
+  const nested = payload.data ?? {}
+  return pickRecordArray(payload.suggestions ?? nested.suggestions)
+}
+
+const streamGuideReply = async (
+  path: string,
+  body: Record<string, unknown>,
   conversationId = '',
-  handlers: GuideQaStreamHandlers = {},
+  handlers: GuideStreamHandlers = {},
   signal?: AbortSignal,
-): Promise<GuideQaStreamResult> => {
-  const response = await fetch(`${GUIDE_API_BASE_URL}${GUIDE_API_PREFIX}/qa/stream`, {
-    method: 'POST',
-    headers: {
-      Accept: 'text/event-stream',
-      'Content-Type': 'application/json',
-      ...GUIDE_HEADERS,
+): Promise<GuideStreamResult> => {
+  const response = await fetch(
+    `${GUIDE_API_BASE_URL}${GUIDE_API_PREFIX}${path}`,
+    {
+      method: 'POST',
+      headers: {
+        Accept: 'text/event-stream',
+        'Content-Type': 'application/json',
+        ...GUIDE_HEADERS,
+      },
+      body: JSON.stringify({
+        ...body,
+        user_id: GUIDE_USER_ID,
+        request_id: GUIDE_REQUEST_ID,
+        ...(conversationId ? { conversation_id: conversationId } : {}),
+      }),
+      signal,
     },
-    body: JSON.stringify({
-      query,
-      user_id: GUIDE_USER_ID,
-      request_id: GUIDE_REQUEST_ID,
-      ...(conversationId ? { conversation_id: conversationId } : {}),
-    }),
-    signal,
-  })
+  )
 
   if (!response.ok) {
     const responseText = await response.text().catch(() => '')
-    throw new Error(responseText || `智能引导问答请求失败（HTTP ${response.status}）`)
+    throw new Error(
+      responseText || `智能引导问答请求失败（HTTP ${response.status}）`,
+    )
   }
 
   if (!response.body) {
@@ -552,6 +616,7 @@ export const streamGuideQa = async (
   let latestConversationId = conversationId
   let requestId = ''
   let source = ''
+  let suggestions: string[] = []
 
   const applyEvent = (event: string, rawData: string) => {
     const payload = parseSsePayload(rawData)
@@ -559,14 +624,26 @@ export const streamGuideQa = async (
       return
     }
 
-    const nextConversationId = pickSseString(payload, 'conversation_id', 'conversationId')
+    const nextConversationId = pickSseString(
+      payload,
+      'conversation_id',
+      'conversationId',
+    )
     if (nextConversationId) {
       latestConversationId = nextConversationId
       handlers.onConversationId?.(nextConversationId)
     }
 
+    const nextSuggestions = pickSseSuggestions(payload)
+    if (nextSuggestions.length) {
+      suggestions = nextSuggestions
+      handlers.onSuggestions?.(nextSuggestions)
+    }
+
     if (event === 'error') {
-      throw new Error(pickSseString(payload, 'message') || '智能引导问答返回异常')
+      throw new Error(
+        pickSseString(payload, 'message') || '智能引导问答返回异常',
+      )
     }
 
     if (event === 'delta') {
@@ -602,7 +679,9 @@ export const streamGuideQa = async (
   }
 
   buffer += decoder.decode()
-  extractSseEvents(`${buffer}\n\n`).events.forEach(({ event, data }) => applyEvent(event, data))
+  extractSseEvents(`${buffer}\n\n`).events.forEach(({ event, data }) =>
+    applyEvent(event, data),
+  )
 
   if (!answer.trim()) {
     throw new Error('智能引导问答返回内容为空')
@@ -613,44 +692,42 @@ export const streamGuideQa = async (
     conversationId: latestConversationId,
     requestId,
     source,
+    suggestions,
   }
 }
 
-export const askGuideProject = async (
+export const streamGuideQa = (
+  query: string,
+  conversationId = '',
+  handlers: GuideStreamHandlers = {},
+  signal?: AbortSignal,
+) => streamGuideReply('/qa/stream', { query }, conversationId, handlers, signal)
+
+export const streamGuideProject = async (
   context: GuideProjectContext,
   query: string,
   conversationId = '',
+  handlers: GuideStreamHandlers = {},
   signal?: AbortSignal,
 ) => {
-  const payload = await requestGuide<Record<string, unknown>>('/assistant/project', {
-    method: 'POST',
-    body: {
+  const result = await streamGuideReply(
+    '/assistant/project/stream',
+    {
       stage: context.stage,
       commission_task_id: context.commissionTaskId,
       project_name: context.projectName,
       query,
-      user_id: GUIDE_USER_ID,
-      request_id: GUIDE_REQUEST_ID,
-      ...(conversationId ? { conversation_id: conversationId } : {}),
     },
+    conversationId,
+    handlers,
     signal,
-  })
-  const raw = payload ?? {}
-
+  )
   return {
-    stage: pickString(raw.stage, context.stage),
-    stageName: pickString(raw.stage_name, raw.stageName, context.stageName),
-    commissionTaskId: pickString(
-      raw.commission_task_id,
-      raw.commissionTaskId,
-      context.commissionTaskId,
-    ),
-    answer: pickString(raw.answer),
-    references: Array.isArray(raw.references) ? raw.references : [],
-    suggestions: pickRecordArray(raw.suggestions),
-    source: pickString(raw.source),
-    conversationId: pickString(raw.conversation_id, raw.conversationId),
-  } satisfies GuideProjectAnswer
+    ...result,
+    stage: context.stage,
+    stageName: context.stageName,
+    commissionTaskId: context.commissionTaskId,
+  } satisfies GuideProjectStreamResult
 }
 
 interface GuideConversationListPayload {
@@ -661,12 +738,17 @@ interface GuideConversationMessagesPayload {
   messages?: Array<Record<string, unknown>>
 }
 
-const normalizeConversation = (raw: Record<string, unknown>): GuideConversationSummary => ({
+const normalizeConversation = (
+  raw: Record<string, unknown>,
+): GuideConversationSummary => ({
   id: pickString(raw.id),
   conversationType: pickString(raw.conversationType, raw.conversation_type),
   title: pickString(raw.title, '未命名会话'),
   messageCount: pickNumber(raw.messageCount, raw.message_count) ?? 0,
-  lastMessagePreview: pickString(raw.lastMessagePreview, raw.last_message_preview),
+  lastMessagePreview: pickString(
+    raw.lastMessagePreview,
+    raw.last_message_preview,
+  ),
   lastMessageAt: pickString(raw.lastMessageAt, raw.last_message_at),
   createdAt: pickString(raw.createdAt, raw.created_at),
   updatedAt: pickString(raw.updatedAt, raw.updated_at),
@@ -675,7 +757,9 @@ const normalizeConversation = (raw: Record<string, unknown>): GuideConversationS
   stage: pickString(raw.stage),
 })
 
-const normalizeConversationMessage = (raw: Record<string, unknown>): GuideConversationMessage => ({
+const normalizeConversationMessage = (
+  raw: Record<string, unknown>,
+): GuideConversationMessage => ({
   id: pickString(raw.id, raw.seqNo, raw.seq_no),
   sequence: pickNumber(raw.seqNo, raw.seq_no, raw.turnNo, raw.turn_no),
   role: pickString(raw.role),
@@ -690,7 +774,9 @@ export const fetchGuideConversations = async (signal?: AbortSignal) => {
     `/assistant/conversations?user_id=${encodeURIComponent(GUIDE_USER_ID)}&conversation_type=&limit=50`,
     { signal },
   )
-  return (payload?.conversations ?? []).map(normalizeConversation).filter((item) => item.id)
+  return (payload?.conversations ?? [])
+    .map(normalizeConversation)
+    .filter((item) => item.id)
 }
 
 export const fetchGuideConversationMessages = async (

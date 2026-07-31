@@ -11,6 +11,8 @@ const TABLE_ROW_LINE_PATTERN = /^\s*\|.+\|.*$/
 const FENCE_LINE_PATTERN = /^\s*(`{3,}|~{3,})/
 const ECHARTS_FENCE_BLOCK_PATTERN =
   /(^|\n)([ \t]*)(`{3,}|~{3,})[ \t]*echarts[ \t]*\n([\s\S]*?)\n\2\3[ \t]*(?=\n|$)/gi
+const TRAILING_ECHARTS_FENCE_PATTERN =
+  /(^|\n)[ \t]*(`{3,}|~{3,})[ \t]*echarts[ \t]*\n[\s\S]*$/i
 
 export interface ParsedReplyContent {
   rawText: string
@@ -89,10 +91,14 @@ export const splitMarkdownRenderBlocks = (markdown: string): MessageRenderBlock[
 }
 
 const removeEChartsFenceBlocks = (markdown: string) =>
-  normalizeLineEndings(markdown).replace(
-    ECHARTS_FENCE_BLOCK_PATTERN,
-    (_match, leadingLineBreak: string) => leadingLineBreak,
-  )
+  normalizeLineEndings(markdown)
+    .replace(
+      ECHARTS_FENCE_BLOCK_PATTERN,
+      (_match, leadingLineBreak: string) => leadingLineBreak,
+    )
+    .replace(TRAILING_ECHARTS_FENCE_PATTERN, (_match, leadingLineBreak: string) =>
+      leadingLineBreak,
+    )
 
 const isTableDelimiterLine = (line: string) =>
   TABLE_DELIMITER_LINE_PATTERN.test(line)

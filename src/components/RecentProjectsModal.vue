@@ -100,7 +100,7 @@ const actionIconMap: Record<string, unknown> = {
 }
 
 const close = () => emit('update:open', false)
-const notifyDeveloping = () => antMessage.info(DIGITAL_HUMAN_DEVELOPMENT_NOTICE)
+const notifyDeveloping = () => antMessage.info(DIGITAL_HUMAN_DEVELOPMENT_NOTICE, 0.8)
 const handleAction = (project: GuideProjectCard, action: string) => {
   if (action === '提问') {
     emit('select-project', project)

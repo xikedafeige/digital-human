@@ -90,7 +90,7 @@ const actionIconMap: Record<string, unknown> = {
   审核: AuditOutlined,
   问数: BarChartOutlined,
 }
-const notifyDeveloping = () => antMessage.info(DIGITAL_HUMAN_DEVELOPMENT_NOTICE)
+const notifyDeveloping = () => antMessage.info(DIGITAL_HUMAN_DEVELOPMENT_NOTICE, 0.8)
 
 const categoryMap: Record<string, string> = {
   全部任务: '全部',
