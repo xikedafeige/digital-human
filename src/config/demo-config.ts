@@ -6,7 +6,7 @@ export type DigitalHumanStatus = 'idle' | 'listening' | 'thinking' | 'speaking'
 export type { DemoMessage }
 
 export const DIGITAL_HUMAN_SUGGESTIONS = [
-  '预算绩效流程是什么？',
+  '事后评价怎么操作？',
   '立项审批材料有哪些？',
   '事后评级步骤是什么？',
   '系统管理入口在哪里？',
@@ -102,9 +102,27 @@ export const DIGITAL_HUMAN_TODO_FILTERS = [
 ]
 
 export const DIGITAL_HUMAN_TODOS = [
-  { id: 1, title: 'xx绩效任务-xxx项目名称', time: '10:04', level: '紧急', actions: ['提问', '审核', '问数'] },
-  { id: 2, title: 'xx绩效任务-xxx项目名称', time: '10:04', level: '普通', actions: ['提问', '写报告', '审核', '问数'] },
-  { id: 3, title: 'xx绩效任务-xxx项目名称', time: '10:04', level: '普通', actions: ['提问', '写报告', '审核', '问数'] },
+  {
+    id: 1,
+    title: 'xx绩效任务-xxx项目名称',
+    time: '10:04',
+    level: '紧急',
+    actions: ['提问', '审核', '问数'],
+  },
+  {
+    id: 2,
+    title: 'xx绩效任务-xxx项目名称',
+    time: '10:04',
+    level: '普通',
+    actions: ['提问', '写报告', '审核', '问数'],
+  },
+  {
+    id: 3,
+    title: 'xx绩效任务-xxx项目名称',
+    time: '10:04',
+    level: '普通',
+    actions: ['提问', '写报告', '审核', '问数'],
+  },
 ]
 
 export const DIGITAL_HUMAN_BOARD_TASKS = [

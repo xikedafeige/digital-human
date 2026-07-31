@@ -24,6 +24,15 @@ export interface GuideRouteCard {
   description?: string
 }
 
+export interface GuideDisambiguationCandidate {
+  id: string
+  label: string
+  intent: string
+  subIntent: string
+  routeId: string
+  keyword: string
+}
+
 export type MessageRenderBlock =
   | {
       type: 'markdown'
@@ -52,6 +61,9 @@ export interface DemoMessage {
   renderBlocks?: MessageRenderBlock[]
   routeCard?: GuideRouteCard
   suggestions?: string[]
+  disambiguationCandidates?: GuideDisambiguationCandidate[]
+  disambiguationQuery?: string
+  selectedDisambiguationCandidateId?: string
   projectContext?: GuideProjectContext
   requestMode?: 'global' | 'project'
 }

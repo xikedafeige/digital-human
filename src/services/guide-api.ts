@@ -1,5 +1,6 @@
 // 智能引导接口客户端，集中管理联调地址、请求头和响应数据规范化。
 import type {
+  GuideDisambiguationCandidate,
   GuideProjectContext,
   GuideProjectStage,
 } from '@/types/avatar-types'
@@ -11,9 +12,11 @@ const GUIDE_REQUEST_ID = ''
 
 // 联调阶段由后端要求固定身份 Header；所有智能引导请求统一复用，不扩散到其他服务。
 const GUIDE_HEADERS: Record<string, string> = {
+  token: '57baaa3b-53e4-4b36-af3b-7a4d08f46625',
+  tenantid: '1',
   uapaccesstoken:
-    'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJXRUIiLCJuYmYiOjE3ODUzNzM2ODAsImRhdGEiOiJ7XCJkZXBhcnRtZW50SWRcIjoxNjYxNjM0MDUzMjM4OTUxOTM2LFwiZGVwYXJ0bWVudE5hbWVcIjpcIuWNj-S9nOWNleS9jVwiLFwiZW1haWxcIjpcIjE1MzA5MDU0NjUyQHFxLmNvbVwiLFwiZmlybUNvZGVcIjpcIjMxMjkxM1wiLFwiZmlybUlkXCI6MTcyOTgwMDc5MDc0MDA0NTgyNCxcImZpcm1OYW1lXCI6XCLlm5vlt53otKLnu4_ogYzkuJrlrabpmaJcIixcImdlbmRlclwiOjEsXCJpZFwiOjE2ODM2NjQ0NTY5OTY4ODQ0ODAsXCJtZXRhZGF0YVwiOnt9LFwicG9zaXRpb25JZHNcIjpcIjZcIixcInBvc2l0aW9uTmFtZXNcIjpcIueJuVwiLFwicmFua3NcIjpcIjIwN1wiLFwicmVhbE5hbWVcIjpcIuW8oOS4ieaWsFwiLFwic3RhdGVcIjoxLFwic3lzdGVtVHlwZVwiOjEsXCJ1c2VyTmFtZVwiOlwiemhhbmdzYW5cIixcInVzZXJUeXBlXCI6XCIxXCJ9IiwiaXNzIjoiVUFQX0FVVEgwIiwiZXhwIjoxNzg1NDA5NjgwLCJpYXQiOjE3ODUzNzM2ODAsImp0aSI6ImJmNmFjZDkwLTI0M2UtNDVhYy1iYjY0LWExMTRhY2NhZDdjNyJ9.MNHBaFN6jw6PvEm9qIHOBeoV3uj3SeQzxP9t-hN5ar2qe1SiU7myNIQ67zCzW25j6MOkJoqozfqzf14avNlfsRVqctUqY2n2LvBsFvXoL28sahtBcYcb3wpRNBF3KPdY242KiMssdB81ROePPePhHgyS6TvYJYNwvpFiK9WlutM',
-  uaprefreshtoken: 'a103d7bc-faa0-458b-a31f-e8845e74842a',
+    'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJXRUIiLCJuYmYiOjE3ODU0NjYxMjksImRhdGEiOiJ7XCJkZXBhcnRtZW50SWRcIjoxNjYxNjM0MDUzMjM4OTUxOTM2LFwiZGVwYXJ0bWVudE5hbWVcIjpcIuWNj-S9nOWNleS9jVwiLFwiZW1haWxcIjpcIjE1MzA5MDU0NjUyQHFxLmNvbVwiLFwiZmlybUNvZGVcIjpcIjMxMjkxM1wiLFwiZmlybUlkXCI6MTcyOTgwMDc5MDc0MDA0NTgyNCxcImZpcm1OYW1lXCI6XCLlm5vlt53otKLnu4_ogYzkuJrlrabpmaJcIixcImdlbmRlclwiOjEsXCJpZFwiOjE2ODM2NjQ0NTY5OTY4ODQ0ODAsXCJtZXRhZGF0YVwiOnt9LFwicG9zaXRpb25JZHNcIjpcIjZcIixcInBvc2l0aW9uTmFtZXNcIjpcIueJuVwiLFwicmFua3NcIjpcIjIwN1wiLFwicmVhbE5hbWVcIjpcIuW8oOS4ieaWsFwiLFwic3RhdGVcIjoxLFwic3lzdGVtVHlwZVwiOjEsXCJ1c2VyTmFtZVwiOlwiemhhbmdzYW5cIixcInVzZXJUeXBlXCI6XCIxXCJ9IiwiaXNzIjoiVUFQX0FVVEgwIiwiZXhwIjoxNzg1NTAyMTI5LCJpYXQiOjE3ODU0NjYxMjksImp0aSI6ImM0ZTc1MmJiLWU0MzgtNGIwOS04MThmLTIxNzkyZTViZjE1OCJ9.kVvPISRH1UhRqH1x6oCNZIgc3UDU-r4nIB-yLmaGS4ZbV_XjZWOPRsdRzgFNcT4fu0lrTcWzjpDMsz1i-kx7VXuACsYqnVkdbw19_xfF3__xr6zc46sOLCII_nsSuexmrZVk5rlYI8t3lWkQvxnx8nOEUORXkN57alYVmcpl0d4',
+  uaprefreshtoken: 'beb457cb-f076-4700-a2b8-1d1dbf783112',
 }
 
 interface GuideResponse<T> {
@@ -430,6 +433,7 @@ export interface GuideSearchResult {
   conversationId: string
   guideStage: string
   route: GuideSearchRoute | null
+  candidates: GuideDisambiguationCandidate[]
 }
 
 export interface GuideStreamResult {
@@ -478,6 +482,33 @@ const normalizeSearchResult = (
     rawRoute?.params && typeof rawRoute.params === 'object'
       ? (rawRoute.params as Record<string, unknown>)
       : {}
+  const candidates = Array.isArray(raw.candidates)
+    ? raw.candidates
+        .filter(
+          (candidate): candidate is Record<string, unknown> =>
+            Boolean(candidate) && typeof candidate === 'object',
+        )
+        .map((candidate, index) => {
+          return {
+            id: pickString(
+              candidate.id,
+              candidate.route_id,
+              candidate.routeId,
+              candidate.keyword,
+              candidate.sub_intent,
+              candidate.subIntent,
+              candidate.label,
+              index,
+            ),
+            label: pickString(candidate.label, candidate.name, candidate.title),
+            intent: pickString(candidate.intent),
+            subIntent: pickString(candidate.sub_intent, candidate.subIntent),
+            routeId: pickString(candidate.route_id, candidate.routeId),
+            keyword: pickString(candidate.keyword),
+          }
+        })
+        .filter((candidate) => candidate.label)
+    : []
 
   return {
     intent: pickString(raw.intent),
@@ -495,6 +526,7 @@ const normalizeSearchResult = (
           params: rawParams,
         }
       : null,
+    candidates,
   }
 }
 
@@ -502,6 +534,7 @@ export const searchGuide = async (
   query: string,
   conversationId = '',
   signal?: AbortSignal,
+  selectedCandidate?: GuideDisambiguationCandidate,
 ) => {
   const payload = await requestGuide<Record<string, unknown>>('/search', {
     method: 'POST',
@@ -510,6 +543,18 @@ export const searchGuide = async (
       user_id: GUIDE_USER_ID,
       request_id: GUIDE_REQUEST_ID,
       ...(conversationId ? { conversation_id: conversationId } : {}),
+      ...(selectedCandidate?.intent
+        ? { chosen_intent: selectedCandidate.intent }
+        : {}),
+      ...(selectedCandidate?.subIntent
+        ? { chosen_sub_intent: selectedCandidate.subIntent }
+        : {}),
+      ...(selectedCandidate?.routeId
+        ? { chosen_route_id: selectedCandidate.routeId }
+        : {}),
+      ...(selectedCandidate?.keyword
+        ? { chosen_keyword: selectedCandidate.keyword }
+        : {}),
     },
     signal,
   })

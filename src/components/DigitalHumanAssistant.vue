@@ -67,98 +67,114 @@
 							<strong>你好，我是小绩！</strong>
 						</header>
 
-						<section ref="messagesRef" class="assistant-messages" :class="{ 'is-suggestion-mode': showSuggestions }">
-							<section v-if="showSuggestions" class="assistant-suggestions">
-								<small>试试这样问：</small>
-								<button v-for="item in suggestions.slice(0, 2)" :key="item" type="button"
-									class="assistant-suggestions__item" @click="sendText(item)">
-									{{ item }}
-								</button>
-							</section>
-
-							<article v-for="message in messages" :key="message.id" class="assistant-message" :class="[
-								`is-${message.role}`,
-								{
-									'is-pending': message.pending,
-									'is-speech-active': message.id === speechPlaybackMessageId,
-								},
-							]">
-								<header class="assistant-message__meta">
-									<strong>{{ roleLabelMap[message.role] }}</strong>
-									<time>{{ formatTime(message.timestamp) }}</time>
-								</header>
-
-								<div v-if="isMessageLoading(message)" class="assistant-message__loading" aria-live="polite">
-									<span class="assistant-message__loading-spinner" aria-hidden="true"></span>
-									<span>{{ getMessageLoadingText(message) }}</span>
-								</div>
-
-								<div v-if="message.thinkContent" class="assistant-message__think"
-									:class="{ 'is-collapsed': message.thinkCollapsed }">
-									<button type="button" class="assistant-message__think-toggle" @click="handleThinkToggle(message.id)">
-										<span>思考过程</span>
-										<span class="assistant-message__think-arrow" :class="{ 'is-collapsed': message.thinkCollapsed }"
-											aria-hidden="true"></span>
+						<div class="assistant-messages-wrap">
+							<section ref="messagesRef" class="assistant-messages" :class="{ 'is-suggestion-mode': showSuggestions }"
+								@scroll="handleMessagesScroll">
+								<section v-if="showSuggestions" class="assistant-suggestions">
+									<small>试试这样问：</small>
+									<button v-for="item in suggestions.slice(0, 2)" :key="item" type="button"
+										class="assistant-suggestions__item" @click="sendText(item)">
+										{{ item }}
 									</button>
-
-									<div v-show="!message.thinkCollapsed"
-										class="assistant-message__markdown assistant-message__think-markdown"
-										v-html="renderMessageHtml(message.thinkContent)"></div>
-								</div>
-
-								<template v-if="message.renderMode === 'markdown' && message.content">
-									<div v-for="block in getMessageRenderBlocks(message)" :key="block.id"
-										class="assistant-message__content-block">
-										<div v-if="block.type === 'markdown'" class="assistant-message__markdown"
-											v-html="renderMessageHtml(block.content)"></div>
-										<EChartsBlock v-else :option="block.option" :raw="block.raw" />
-									</div>
-								</template>
-								<p v-else-if="message.content" class="assistant-message__plain">
-									{{ message.content }}
-								</p>
-
-								<button v-if="message.routeCard" type="button" class="assistant-message__route-card"
-									@click="navigateToRoute(message.routeCard.url)">
-									<span>
-										<strong>{{ message.routeCard.title }}</strong>
-										<small>{{ message.routeCard.url }}</small>
-									</span>
-									<ArrowRightOutlined />
-								</button>
-
-								<section v-if="message.suggestions?.length" class="assistant-message__suggestions" aria-label="建议追问">
-									<strong>建议追问</strong>
-									<ul>
-										<li v-for="suggestion in message.suggestions" :key="suggestion">{{ suggestion }}</li>
-									</ul>
 								</section>
 
-								<div v-if="canShowMessageActions(message)" class="assistant-message__actions" aria-label="消息操作">
-									<button type="button" class="assistant-message__action-button"
-										:class="{ 'is-active': copiedMessageId === message.id || messageActionStateMap[message.id] === 'copy' }"
-										:aria-label="copiedMessageId === message.id ? '已复制' : '复制'"
-										:data-tooltip="copiedMessageId === message.id ? '已复制' : '复制'"
-										:disabled="isMessageActionBusy(message.id)" @click="copyMessageContent(message)">
-										<svg v-if="copiedMessageId === message.id" viewBox="0 0 24 24" aria-hidden="true">
-											<path d="M20 6 9 17l-5-5" />
-										</svg>
-										<svg v-else viewBox="0 0 24 24" aria-hidden="true">
-											<rect x="8" y="8" width="10" height="12" rx="2" />
-											<path d="M6 16H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
-										</svg>
+								<article v-for="message in messages" :key="message.id" class="assistant-message" :class="[
+									`is-${message.role}`,
+									{
+										'is-pending': message.pending,
+										'is-speech-active': message.id === speechPlaybackMessageId,
+									},
+								]">
+									<header class="assistant-message__meta">
+										<strong>{{ roleLabelMap[message.role] }}</strong>
+										<time>{{ formatTime(message.timestamp) }}</time>
+									</header>
+
+									<div v-if="isMessageLoading(message)" class="assistant-message__loading" aria-live="polite">
+										<span class="assistant-message__loading-spinner" aria-hidden="true"></span>
+										<span>{{ getMessageLoadingText(message) }}</span>
+									</div>
+
+									<div v-if="message.thinkContent" class="assistant-message__think"
+										:class="{ 'is-collapsed': message.thinkCollapsed }">
+										<button type="button" class="assistant-message__think-toggle"
+											@click="handleThinkToggle(message.id)">
+											<span>思考过程</span>
+											<span class="assistant-message__think-arrow" :class="{ 'is-collapsed': message.thinkCollapsed }"
+												aria-hidden="true"></span>
+										</button>
+
+										<div v-show="!message.thinkCollapsed"
+											class="assistant-message__markdown assistant-message__think-markdown"
+											v-html="renderMessageHtml(message.thinkContent)"></div>
+									</div>
+
+									<template v-if="message.renderMode === 'markdown' && message.content">
+										<div v-for="block in getMessageRenderBlocks(message)" :key="block.id"
+											class="assistant-message__content-block">
+											<div v-if="block.type === 'markdown'" class="assistant-message__markdown"
+												v-html="renderMessageHtml(block.content)"></div>
+											<EChartsBlock v-else :option="block.option" :raw="block.raw" />
+										</div>
+									</template>
+									<p v-else-if="message.content" class="assistant-message__plain">
+										{{ message.content }}
+									</p>
+
+									<button v-if="message.routeCard" type="button" class="assistant-message__route-card"
+										@click="navigateToRoute(message.routeCard.url)">
+										<span>
+											<strong>{{ message.routeCard.title }}</strong>
+											<small>{{ message.routeCard.url }}</small>
+										</span>
+										<ArrowRightOutlined />
 									</button>
-									<button type="button" class="assistant-message__action-button" aria-label="重新生成" data-tooltip="重新生成"
-										:class="{ 'is-active': messageActionStateMap[message.id] === 'regenerate' }"
-										:disabled="isMessageActionBusy(message.id)" @click="handleRegenerateMessage(message.id)">
-										<svg viewBox="0 0 24 24" aria-hidden="true">
-											<path d="M21 12a9 9 0 0 1-15.3 6.4" />
-											<path d="M3 12A9 9 0 0 1 18.3 5.6" />
-											<path d="M18 2v4h-4" />
-											<path d="M6 22v-4h4" />
-										</svg>
-									</button>
-									<!-- <button type="button" class="assistant-message__action-button" aria-label="语音朗读"
+
+									<section v-if="message.suggestions?.length" class="assistant-message__suggestions" aria-label="建议追问">
+										<strong>建议追问</strong>
+										<ul>
+											<li v-for="suggestion in message.suggestions" :key="suggestion">{{ suggestion }}</li>
+										</ul>
+									</section>
+
+									<section v-if="message.disambiguationCandidates?.length" class="assistant-message__disambiguation"
+										aria-label="请选择处理方式">
+										<strong>请选择处理方式</strong>
+										<button v-for="candidate in message.disambiguationCandidates" :key="candidate.id" type="button"
+											class="assistant-message__candidate-card"
+											:class="{ 'is-selected': message.selectedDisambiguationCandidateId === candidate.id }"
+											:disabled="Boolean(message.selectedDisambiguationCandidateId)"
+											@click="selectDisambiguationCandidate(message.id, candidate.id)">
+											<span>{{ candidate.label }}</span>
+											<ArrowRightOutlined />
+										</button>
+									</section>
+
+									<div v-if="canShowMessageActions(message)" class="assistant-message__actions" aria-label="消息操作">
+										<button type="button" class="assistant-message__action-button"
+											:class="{ 'is-active': copiedMessageId === message.id || messageActionStateMap[message.id] === 'copy' }"
+											:aria-label="copiedMessageId === message.id ? '已复制' : '复制'"
+											:data-tooltip="copiedMessageId === message.id ? '已复制' : '复制'"
+											:disabled="isMessageActionBusy(message.id)" @click="copyMessageContent(message)">
+											<svg v-if="copiedMessageId === message.id" viewBox="0 0 24 24" aria-hidden="true">
+												<path d="M20 6 9 17l-5-5" />
+											</svg>
+											<svg v-else viewBox="0 0 24 24" aria-hidden="true">
+												<rect x="8" y="8" width="10" height="12" rx="2" />
+												<path d="M6 16H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
+											</svg>
+										</button>
+										<button type="button" class="assistant-message__action-button" aria-label="重新生成" data-tooltip="重新生成"
+											:class="{ 'is-active': messageActionStateMap[message.id] === 'regenerate' }"
+											:disabled="isMessageActionBusy(message.id)" @click="handleRegenerateMessage(message.id)">
+											<svg viewBox="0 0 24 24" aria-hidden="true">
+												<path d="M21 12a9 9 0 0 1-15.3 6.4" />
+												<path d="M3 12A9 9 0 0 1 18.3 5.6" />
+												<path d="M18 2v4h-4" />
+												<path d="M6 22v-4h4" />
+											</svg>
+										</button>
+										<!-- <button type="button" class="assistant-message__action-button" aria-label="语音朗读"
 										data-tooltip="语音朗读" :class="{ 'is-active': isMessageReadActive(message.id) }"
 										:disabled="isMessageActionBusy(message.id)" @click="handleReadMessage(message.id)">
 										<svg viewBox="0 0 24 24" aria-hidden="true">
@@ -167,44 +183,47 @@
 											<path d="M19 7v10" />
 										</svg>
 									</button> -->
-									<button type="button" class="assistant-message__action-button"
-										:class="{ 'is-active': messageFeedbackMap[message.id] === 'like' }" aria-label="喜欢"
-										data-tooltip="喜欢" :disabled="isMessageActionBusy(message.id)"
-										@click="setMessageFeedback(message.id, 'like')">
-										<svg viewBox="0 0 24 24" aria-hidden="true">
-											<path d="M7 10v10" />
-											<path d="M11 9l1-5a2 2 0 0 1 3.9.8L15 10h4a2 2 0 0 1 2 2.3l-1 6a2 2 0 0 1-2 1.7H7" />
-											<path d="M3 10h4v10H3z" />
-										</svg>
-									</button>
-									<button type="button" class="assistant-message__action-button"
-										:class="{ 'is-active': messageFeedbackMap[message.id] === 'dislike' }" aria-label="不喜欢"
-										data-tooltip="不喜欢" :disabled="isMessageActionBusy(message.id)"
-										@click="setMessageFeedback(message.id, 'dislike')">
-										<svg viewBox="0 0 24 24" aria-hidden="true">
-											<path d="M17 14V4" />
-											<path d="M13 15l-1 5a2 2 0 0 1-3.9-.8L9 14H5a2 2 0 0 1-2-2.3l1-6A2 2 0 0 1 6 4h11" />
-											<path d="M17 4h4v10h-4z" />
-										</svg>
-									</button>
-								</div>
+										<button type="button" class="assistant-message__action-button"
+											:class="{ 'is-active': messageFeedbackMap[message.id] === 'like' }" aria-label="喜欢"
+											data-tooltip="喜欢" :disabled="isMessageActionBusy(message.id)"
+											@click="setMessageFeedback(message.id, 'like')">
+											<svg viewBox="0 0 24 24" aria-hidden="true">
+												<path d="M7 10v10" />
+												<path d="M11 9l1-5a2 2 0 0 1 3.9.8L15 10h4a2 2 0 0 1 2 2.3l-1 6a2 2 0 0 1-2 1.7H7" />
+												<path d="M3 10h4v10H3z" />
+											</svg>
+										</button>
+										<button type="button" class="assistant-message__action-button"
+											:class="{ 'is-active': messageFeedbackMap[message.id] === 'dislike' }" aria-label="不喜欢"
+											data-tooltip="不喜欢" :disabled="isMessageActionBusy(message.id)"
+											@click="setMessageFeedback(message.id, 'dislike')">
+											<svg viewBox="0 0 24 24" aria-hidden="true">
+												<path d="M17 14V4" />
+												<path d="M13 15l-1 5a2 2 0 0 1-3.9-.8L9 14H5a2 2 0 0 1-2-2.3l1-6A2 2 0 0 1 6 4h11" />
+												<path d="M17 4h4v10h-4z" />
+											</svg>
+										</button>
+									</div>
 
-								<div v-if="message.id === speechPlaybackMessageId && speechFollowText"
-									class="assistant-message__follow">
-									<span class="assistant-message__follow-done">
-										{{ speechFollowText.slice(0, speechFollowHighlightIndex) }}
-									</span>
-									<span class="assistant-message__follow-rest">
-										{{ speechFollowText.slice(speechFollowHighlightIndex) }}
-									</span>
-								</div>
+									<div v-if="message.id === speechPlaybackMessageId && speechFollowText"
+										class="assistant-message__follow">
+										<span class="assistant-message__follow-done">
+											{{ speechFollowText.slice(0, speechFollowHighlightIndex) }}
+										</span>
+										<span class="assistant-message__follow-rest">
+											{{ speechFollowText.slice(speechFollowHighlightIndex) }}
+										</span>
+									</div>
 
-								<div v-if="message.id === speechPlaybackMessageId" class="assistant-message__speech-progress"
-									aria-hidden="true">
-									<span :style="{ transform: `scaleX(${speechOverallProgress})` }"></span>
-								</div>
-							</article>
-						</section>
+									<div v-if="message.id === speechPlaybackMessageId" class="assistant-message__speech-progress"
+										aria-hidden="true">
+										<span :style="{ transform: `scaleX(${speechOverallProgress})` }"></span>
+									</div>
+								</article>
+							</section>
+							<button v-if="showScrollToLatest" type="button" class="assistant-messages__latest-button"
+								@click="scrollMessagesToBottom">回到底部</button>
+						</div>
 					</section>
 				</div>
 
@@ -375,6 +394,7 @@ const {
 	readMessageAloud,
 	regenerateAssistantMessage,
 	removeProject,
+	selectDisambiguationCandidate,
 	selectedProjectContext,
 	sendText,
 	showInterruptButton,
@@ -423,6 +443,9 @@ const selectAgent = (agent: DigitalHumanAgentOption) => {
 }
 const isWidePanel = ref(false)
 const shouldSkipNextMessageAutoScroll = ref(false)
+const isFollowingLatestMessage = ref(true)
+const showScrollToLatest = ref(false)
+const MESSAGE_SCROLL_BOTTOM_THRESHOLD = 32
 const copiedMessageId = ref('')
 const messageFeedbackMap = ref<Record<string, MessageFeedback | undefined>>({})
 const messageActionStateMap = ref<Record<string, MessageActionState | undefined>>({})
@@ -759,6 +782,23 @@ const scrollMessagesToBottom = () => {
 	}
 
 	messagesElement.scrollTop = messagesElement.scrollHeight
+	isFollowingLatestMessage.value = true
+	showScrollToLatest.value = false
+}
+
+const handleMessagesScroll = () => {
+	const messagesElement = messagesRef.value
+	if (!messagesElement) {
+		return
+	}
+
+	const distanceToBottom =
+		messagesElement.scrollHeight -
+		messagesElement.scrollTop -
+		messagesElement.clientHeight
+	const isNearBottom = distanceToBottom <= MESSAGE_SCROLL_BOTTOM_THRESHOLD
+	isFollowingLatestMessage.value = isNearBottom
+	showScrollToLatest.value = !isNearBottom
 }
 
 // 用户展开/收起思考过程时保留当前位置，不触发本次自动滚底。
@@ -775,9 +815,13 @@ watch(
 			return
 		}
 
-		nextTick(() => {
-			scrollMessagesToBottom()
-		})
+		if (isFollowingLatestMessage.value) {
+			nextTick(() => {
+				if (isFollowingLatestMessage.value) {
+					scrollMessagesToBottom()
+				}
+			})
+		}
 	},
 	{ deep: true },
 )
@@ -1394,6 +1438,32 @@ onBeforeUnmount(() => {
 	padding-right: 6px;
 }
 
+.assistant-messages-wrap {
+	position: relative;
+	display: flex;
+	min-height: 0;
+}
+
+.assistant-messages-wrap .assistant-messages {
+	flex: 1;
+}
+
+.assistant-messages__latest-button {
+	position: absolute;
+	right: 14px;
+	bottom: 12px;
+	z-index: 3;
+	padding: 5px 10px;
+	border: 1px solid rgba(113, 148, 237, 0.36);
+	border-radius: 999px;
+	background: rgba(255, 255, 255, 0.94);
+	box-shadow: 0 4px 12px rgba(76, 105, 170, 0.16);
+	color: #496ec9;
+	font-size: 11px;
+	line-height: 16px;
+	cursor: pointer;
+}
+
 .assistant-message {
 	padding: 12px 14px;
 	border-radius: 18px;
@@ -1481,6 +1551,7 @@ onBeforeUnmount(() => {
 
 .assistant-message__markdown {
 	color: inherit;
+	font-family: inherit;
 	font-size: 14px;
 	line-height: 1.6;
 	word-break: break-word;
@@ -1502,6 +1573,37 @@ onBeforeUnmount(() => {
 	margin: 0 0 8px;
 }
 
+.assistant-message__markdown :deep(h1),
+.assistant-message__markdown :deep(h2),
+.assistant-message__markdown :deep(h3),
+.assistant-message__markdown :deep(h4),
+.assistant-message__markdown :deep(h5),
+.assistant-message__markdown :deep(h6) {
+	margin: 14px 0 7px;
+	color: inherit;
+	font-family: inherit;
+	font-weight: 700;
+	line-height: 1.45;
+}
+
+.assistant-message__markdown :deep(h1) {
+	font-size: 18px;
+}
+
+.assistant-message__markdown :deep(h2) {
+	font-size: 16px;
+}
+
+.assistant-message__markdown :deep(h3) {
+	font-size: 15px;
+}
+
+.assistant-message__markdown :deep(h4),
+.assistant-message__markdown :deep(h5),
+.assistant-message__markdown :deep(h6) {
+	font-size: 14px;
+}
+
 .assistant-message__markdown :deep(ul),
 .assistant-message__markdown :deep(ol) {
 	margin: 0 0 8px;
@@ -1510,6 +1612,19 @@ onBeforeUnmount(() => {
 
 .assistant-message__markdown :deep(li + li) {
 	margin-top: 4px;
+}
+
+.assistant-message__markdown :deep(blockquote) {
+	margin: 0 0 8px;
+	padding: 5px 0 5px 10px;
+	border-left: 3px solid rgba(83, 124, 230, 0.36);
+	color: #5d6f8d;
+}
+
+.assistant-message__markdown :deep(hr) {
+	margin: 12px 0;
+	border: 0;
+	border-top: 1px solid rgba(199, 211, 235, 0.8);
 }
 
 .assistant-message__markdown :deep(code) {
@@ -2447,6 +2562,59 @@ onBeforeUnmount(() => {
 	color: #4e596a;
 	font-size: 11px;
 	line-height: 18px;
+}
+
+.assistant-message__disambiguation {
+	display: grid;
+	gap: 7px;
+	margin-top: 10px;
+}
+
+.assistant-message__disambiguation>strong {
+	color: #68758a;
+	font-size: 11px;
+	line-height: 17px;
+}
+
+.assistant-message__candidate-card {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	width: 100%;
+	padding: 9px 10px;
+	border: 1px solid rgba(179, 199, 240, 0.88);
+	border-radius: 10px;
+	background: rgba(248, 251, 255, 0.9);
+	color: #46658f;
+	font: inherit;
+	font-size: 12px;
+	line-height: 18px;
+	text-align: left;
+	cursor: pointer;
+	transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
+}
+
+.assistant-message__candidate-card>span {
+	min-width: 0;
+	flex: 1;
+}
+
+.assistant-message__candidate-card :deep(.anticon) {
+	flex: none;
+	font-size: 13px;
+}
+
+.assistant-message__candidate-card:hover:not(:disabled),
+.assistant-message__candidate-card.is-selected {
+	border-color: #7aa4f7;
+	background: #eef5ff;
+	color: #356bd0;
+}
+
+.assistant-message__candidate-card:disabled {
+	cursor: default;
+	opacity: 0.66;
 }
 
 :global(.assistant-agent-dropdown) {

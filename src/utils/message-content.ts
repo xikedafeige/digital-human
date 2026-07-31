@@ -142,6 +142,53 @@ const wrapMarkdownTables = (html: string) =>
     .replace(/<table>/g, '<div class="markdown-table-scroll"><table>')
     .replace(/<\/table>/g, '</table></div>')
 
+// 修正常见的“正文后直接接标题”格式，避免 Markdown 标题被当作普通文本。
+const normalizeMarkdownStructure = (markdown: string) => {
+  const lines = normalizeLineEndings(markdown).split('\n')
+  const normalizedLines: string[] = []
+  let insideFence = false
+  let fenceMarker = ''
+
+  lines.forEach((line) => {
+    const fenceMatch = line.match(FENCE_LINE_PATTERN)
+    if (fenceMatch) {
+      const marker = fenceMatch[1][0]
+      if (!insideFence) {
+        insideFence = true
+        fenceMarker = marker
+      } else if (marker === fenceMarker) {
+        insideFence = false
+        fenceMarker = ''
+      }
+      normalizedLines.push(line)
+      return
+    }
+
+    if (insideFence) {
+      normalizedLines.push(line)
+      return
+    }
+
+    const nextLines = line
+      .replace(/(\S)[ \t]+(#{1,6})[ \t]+(?=\S)/g, '$1\n\n$2 ')
+      .split('\n')
+
+    nextLines.forEach((nextLine) => {
+      const isHeading = /^\s{0,3}#{1,6}\s+\S/.test(nextLine)
+      if (
+        isHeading &&
+        normalizedLines.length > 0 &&
+        normalizedLines[normalizedLines.length - 1].trim()
+      ) {
+        normalizedLines.push('')
+      }
+      normalizedLines.push(nextLine)
+    })
+  })
+
+  return normalizedLines.join('\n')
+}
+
 // 修正 Dify 偶发的表格换行不规范输出，让 marked 稳定识别 GFM 表格。
 const normalizeMarkdownTables = (markdown: string) => {
   const lines = normalizeLineEndings(markdown).split('\n')
@@ -320,7 +367,7 @@ export const parseReplyContent = (rawText: string): ParsedReplyContent => {
     rawText: normalizedRawText,
     bodyMarkdown,
     thinkMarkdown,
-    speechText: markdownToPlainText(bodyMarkdown),
+    speechText: markdownToSpeechText(bodyMarkdown),
     renderBlocks: splitMarkdownRenderBlocks(bodyMarkdown),
     hasThinkBlock,
     thinkCompleted: hasThinkBlock && !insideThink,
@@ -334,7 +381,9 @@ export const renderMarkdownToHtml = (markdown: string) => {
     return ''
   }
 
-  const renderableMarkdown = normalizeMarkdownTables(normalizedMarkdown)
+  const renderableMarkdown = normalizeMarkdownTables(
+    normalizeMarkdownStructure(normalizedMarkdown),
+  )
 
   const unsafeHtml = marked.parse(renderableMarkdown, {
     async: false,
@@ -345,15 +394,16 @@ export const renderMarkdownToHtml = (markdown: string) => {
   return DOMPurify.sanitize(wrapMarkdownTables(unsafeHtml))
 }
 
-// 将 Markdown 转成纯文本，供 TTS 和状态摘要使用。
-export const markdownToPlainText = (markdown: string) => {
-  const safeHtml = renderMarkdownToHtml(removeEChartsFenceBlocks(markdown))
+const readHtmlAsPlainText = (safeHtml: string, omitTables = false) => {
   if (!safeHtml) {
     return ''
   }
 
   if (typeof document === 'undefined') {
-    return safeHtml
+    const readableHtml = omitTables
+      ? safeHtml.replace(/<table\b[\s\S]*?<\/table>/gi, '')
+      : safeHtml
+    return readableHtml
       .replace(/<br\s*\/?>/gi, '\n')
       .replace(/<\/(p|div|li|h[1-6]|blockquote|pre|ul|ol)>/gi, '\n')
       .replace(/<[^>]+>/g, ' ')
@@ -365,6 +415,9 @@ export const markdownToPlainText = (markdown: string) => {
 
   const container = document.createElement('div')
   container.innerHTML = safeHtml
+  if (omitTables) {
+    container.querySelectorAll('table').forEach((table) => table.remove())
+  }
 
   return (container.innerText || container.textContent || '')
     .replace(/\r\n/g, '\n')
@@ -373,3 +426,14 @@ export const markdownToPlainText = (markdown: string) => {
     .replace(/[ \t]{2,}/g, ' ')
     .trim()
 }
+
+// 将 Markdown 转成纯文本，用于复制、摘要等需要保留表格内容的场景。
+export const markdownToPlainText = (markdown: string) =>
+  readHtmlAsPlainText(renderMarkdownToHtml(removeEChartsFenceBlocks(markdown)))
+
+// 提取可朗读文本：图表配置和表格仅展示，不参与 TTS 与跟读高亮。
+export const markdownToSpeechText = (markdown: string) =>
+  readHtmlAsPlainText(
+    renderMarkdownToHtml(removeEChartsFenceBlocks(markdown)),
+    true,
+  )

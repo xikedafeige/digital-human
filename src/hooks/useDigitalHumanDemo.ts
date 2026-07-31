@@ -10,6 +10,7 @@ import {
 import type {
   AvatarState,
   DemoMessage,
+  GuideDisambiguationCandidate,
   GuideProjectContext,
   SpeechSynthesisResult,
 } from '@/types/avatar-types'
@@ -21,7 +22,7 @@ import {
   type GuideSearchRoute,
 } from '@/services/guide-api'
 import {
-  markdownToPlainText,
+  markdownToSpeechText,
   parseReplyContent,
   splitMarkdownRenderBlocks,
   type ParsedReplyContent,
@@ -109,6 +110,9 @@ const createMessage = (
       | 'renderBlocks'
       | 'routeCard'
       | 'suggestions'
+      | 'disambiguationCandidates'
+      | 'disambiguationQuery'
+      | 'selectedDisambiguationCandidateId'
       | 'projectContext'
       | 'requestMode'
     >
@@ -128,6 +132,10 @@ const createMessage = (
   renderBlocks: options.renderBlocks,
   routeCard: options.routeCard,
   suggestions: options.suggestions,
+  disambiguationCandidates: options.disambiguationCandidates,
+  disambiguationQuery: options.disambiguationQuery,
+  selectedDisambiguationCandidateId:
+    options.selectedDisambiguationCandidateId,
   projectContext: options.projectContext,
   requestMode: options.requestMode,
 })
@@ -165,6 +173,7 @@ interface PlaybackQueueItem {
 interface ReplyFlowOptions {
   reuseMessageId?: string
   projectContext?: GuideProjectContext | null
+  selectedDisambiguationCandidate?: GuideDisambiguationCandidate
 }
 
 interface DigitalHumanDemoOptions {
@@ -1027,7 +1036,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
         enqueueSpeechSegments(
           flowId,
           messageId,
-          markdownToPlainText(markdownText),
+          markdownToSpeechText(markdownText),
           'fallback',
         )
       },
@@ -1040,7 +1049,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     finalizeSpeechFlow(
       flowId,
       messageId,
-      markdownToPlainText(fallbackReply),
+      markdownToSpeechText(fallbackReply),
       'fallback',
     )
   }
@@ -1165,7 +1174,13 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
       | 'suggestions'
       | 'projectContext'
       | 'requestMode'
-    >,
+    > &
+      Partial<
+        Pick<
+          DemoMessage,
+          'disambiguationCandidates' | 'disambiguationQuery'
+        >
+      >,
   ) => {
     const parsedContent = parseReplyContent(markdown)
     const targetMessage = getMessageById(messageId)
@@ -1175,6 +1190,10 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
 
     targetMessage.routeCard = messageOptions.routeCard
     targetMessage.suggestions = messageOptions.suggestions
+    targetMessage.disambiguationCandidates =
+      messageOptions.disambiguationCandidates
+    targetMessage.disambiguationQuery = messageOptions.disambiguationQuery
+    targetMessage.selectedDisambiguationCandidateId = undefined
     targetMessage.projectContext = messageOptions.projectContext
     targetMessage.requestMode = messageOptions.requestMode
     updateAssistantMessage(messageId, parsedContent, {
@@ -1206,6 +1225,8 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     const requestMode: DemoMessage['requestMode'] = projectContext
       ? 'project'
       : 'global'
+    const selectedDisambiguationCandidate =
+      options.selectedDisambiguationCandidate
     const reusableMessage = options.reuseMessageId
       ? getMessageById(options.reuseMessageId)
       : null
@@ -1242,6 +1263,9 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
       assistantMessage.renderBlocks = undefined
       assistantMessage.routeCard = undefined
       assistantMessage.suggestions = undefined
+      assistantMessage.disambiguationCandidates = undefined
+      assistantMessage.disambiguationQuery = undefined
+      assistantMessage.selectedDisambiguationCandidateId = undefined
       assistantMessage.projectContext = projectContext ?? undefined
       assistantMessage.requestMode = requestMode
     } else {
@@ -1321,6 +1345,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
           question,
           conversationId.value,
           guideController.signal,
+          selectedDisambiguationCandidate,
         )
         if (flowId !== activeFlowId) {
           return
@@ -1369,6 +1394,8 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
             conversationId: conversationId.value,
             routeCard: undefined,
             suggestions: undefined,
+            disambiguationCandidates: undefined,
+            disambiguationQuery: undefined,
             projectContext: undefined,
             requestMode: 'global',
           })
@@ -1388,6 +1415,12 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
           conversationId: conversationId.value,
           routeCard,
           suggestions: undefined,
+          disambiguationCandidates:
+            searchResult.intent === 'disambiguation'
+              ? searchResult.candidates
+              : undefined,
+          disambiguationQuery:
+            searchResult.intent === 'disambiguation' ? question : undefined,
           projectContext: undefined,
           requestMode: 'global',
         })
@@ -1412,7 +1445,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
             : ''
         const partialSpeechText =
           streamSpeechText ||
-          markdownToPlainText(latestBodyMarkdown || partialBody)
+          markdownToSpeechText(latestBodyMarkdown || partialBody)
 
         if (partialSpeechText) {
           if (targetMessage) {
@@ -1483,6 +1516,49 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     )
     inputText.value = ''
     runReplyFlow(question, source, { projectContext })
+  }
+
+  // 选择歧义分流候选项后，回传文档规定的 chosen_* 参数继续搜索。
+  const selectDisambiguationCandidate = (
+    messageId: string,
+    candidateId: string,
+  ) => {
+    const sourceMessage = getMessageById(messageId)
+    const candidate = sourceMessage?.disambiguationCandidates?.find(
+      (item) => item.id === candidateId,
+    )
+    const question = sourceMessage?.disambiguationQuery?.trim()
+
+    if (
+      !sourceMessage ||
+      !candidate ||
+      !question ||
+      sourceMessage.selectedDisambiguationCandidateId ||
+      isRecording.value ||
+      isAwaitingVoiceRecognitionResult.value
+    ) {
+      return
+    }
+
+    if (isBusy.value) {
+      cancelCurrentFlow()
+    }
+
+    sourceMessage.selectedDisambiguationCandidateId = candidate.id
+    conversationId.value = ''
+    clearInputHint()
+    isExpanded.value = true
+    messages.value.push(
+      createMessage('user', candidate.label, {
+        source: 'text',
+        renderMode: 'plain',
+        requestMode: 'global',
+      }),
+    )
+    runReplyFlow(question, 'text', {
+      projectContext: null,
+      selectedDisambiguationCandidate: candidate,
+    })
   }
 
   // 提交当前输入框文本。
@@ -1703,7 +1779,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     const targetMessage = getMessageById(messageId)
     const speechText = targetMessage
       ? normalizeSpeechText(
-          markdownToPlainText(targetMessage.content) || targetMessage.content,
+          markdownToSpeechText(targetMessage.content) || targetMessage.content,
         )
       : ''
 
@@ -1896,6 +1972,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     regenerateAssistantMessage,
     removeProject,
     selectedProjectContext,
+    selectDisambiguationCandidate,
     sendText,
     showInterruptButton,
     speechCompletedMessageIds,
