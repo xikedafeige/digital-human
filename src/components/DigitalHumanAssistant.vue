@@ -143,7 +143,6 @@
 										<button v-for="candidate in message.disambiguationCandidates" :key="candidate.id" type="button"
 											class="assistant-message__candidate-card"
 											:class="{ 'is-selected': message.selectedDisambiguationCandidateId === candidate.id }"
-											:disabled="Boolean(message.selectedDisambiguationCandidateId)"
 											@click="selectDisambiguationCandidate(message.id, candidate.id)">
 											<span>{{ candidate.label }}</span>
 											<ArrowRightOutlined />

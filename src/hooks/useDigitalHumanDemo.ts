@@ -93,6 +93,16 @@ const normalizeSpeechText = (value: string) => {
     .trim()
 }
 
+// 将歧义候选项标题规范化为可提交给后端的 query，去掉图标和表情。
+const normalizeDisambiguationQuery = (value: string) =>
+  value
+    .replace(
+      /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu,
+      '',
+    )
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+
 // 创建统一的消息对象，补齐时间、来源和渲染模式等默认值。
 const createMessage = (
   role: DemoMessage['role'],
@@ -1527,13 +1537,10 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     const candidate = sourceMessage?.disambiguationCandidates?.find(
       (item) => item.id === candidateId,
     )
-    const question = sourceMessage?.disambiguationQuery?.trim()
 
     if (
       !sourceMessage ||
       !candidate ||
-      !question ||
-      sourceMessage.selectedDisambiguationCandidateId ||
       isRecording.value ||
       isAwaitingVoiceRecognitionResult.value
     ) {
@@ -1548,14 +1555,16 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     conversationId.value = ''
     clearInputHint()
     isExpanded.value = true
+    const normalizedQuestion =
+      normalizeDisambiguationQuery(candidate.label) || candidate.label.trim()
     messages.value.push(
-      createMessage('user', candidate.label, {
+      createMessage('user', normalizedQuestion, {
         source: 'text',
         renderMode: 'plain',
         requestMode: 'global',
       }),
     )
-    runReplyFlow(question, 'text', {
+    runReplyFlow(normalizedQuestion, 'text', {
       projectContext: null,
       selectedDisambiguationCandidate: candidate,
     })

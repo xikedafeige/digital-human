@@ -4,46 +4,52 @@
     title="历史对话"
     :footer="null"
     :width="430"
+    :body-style="historyModalBodyStyle"
     centered
     @cancel="close"
   >
     <div class="history-modal__content">
-    <div v-if="isLoading" class="history-modal__state">正在加载中，请耐心等待...</div>
-    <div v-else-if="errorMessage" class="history-modal__state is-error">
-      <span>{{ errorMessage }}</span>
-      <button type="button" @click="loadConversations">重新加载</button>
-    </div>
-    <div v-else-if="!conversations.length" class="history-modal__state">暂无历史对话</div>
+      <div v-if="isLoading" class="history-modal__state">正在加载中，请耐心等待...</div>
+      <div v-else-if="errorMessage" class="history-modal__state is-error">
+        <span>{{ errorMessage }}</span>
+        <button type="button" @click="loadConversations">重新加载</button>
+      </div>
+      <div v-else-if="!conversations.length" class="history-modal__state">暂无历史对话</div>
 
-    <div v-else class="history-modal__list">
-      <button
-        v-for="conversation in conversations"
-        :key="conversation.id"
-        type="button"
-        class="history-modal__item"
-        :class="{ 'is-active': conversation.id === activeConversationId }"
-        @click="loadMessages(conversation)"
+      <div v-else class="history-modal__list">
+        <button
+          v-for="conversation in conversations"
+          :key="conversation.id"
+          type="button"
+          class="history-modal__item"
+          :class="{ 'is-active': conversation.id === activeConversationId }"
+          @click="loadMessages(conversation)"
+        >
+          <span class="history-modal__title-row">
+            <strong>{{ conversation.title }}</strong>
+            <small
+              v-if="conversation.conversationType"
+              :class="conversation.conversationType === 'project' ? 'is-project' : 'is-digital-human'"
+            >
+              {{ conversation.conversationType === 'project' ? '项目助手' : '数字人' }}
+            </small>
+          </span>
+          <span>{{ formatTime(conversation.updatedAt || conversation.lastMessageAt) }} · {{ conversation.messageCount }} 条消息</span>
+          <p v-if="conversation.lastMessagePreview">{{ conversation.lastMessagePreview }}</p>
+        </button>
+      </div>
+
+      <div
+        v-if="isMessagesLoading || messagesError"
+        class="history-modal__message-overlay"
+        :class="{ 'is-error': Boolean(messagesError) }"
       >
-        <span class="history-modal__title-row">
-          <strong>{{ conversation.title }}</strong>
-          <small v-if="conversation.conversationType"
-            :class="conversation.conversationType === 'project' ? 'is-project' : 'is-digital-human'">
-            {{ conversation.conversationType === 'project' ? '项目助手' : '数字人' }}
-          </small>
-        </span>
-        <span>{{ formatTime(conversation.updatedAt || conversation.lastMessageAt) }} · {{ conversation.messageCount }} 条消息</span>
-        <p v-if="conversation.lastMessagePreview">{{ conversation.lastMessagePreview }}</p>
-      </button>
-    </div>
-
-    <div v-if="isMessagesLoading || messagesError" class="history-modal__message-overlay"
-      :class="{ 'is-error': Boolean(messagesError) }">
-      <template v-if="isMessagesLoading">正在加载中，请耐心等待...</template>
-      <template v-else>
-      <span>{{ messagesError }}</span>
-      <button v-if="retryConversation" type="button" @click="loadMessages(retryConversation)">重试</button>
-      </template>
-    </div>
+        <template v-if="isMessagesLoading">正在加载中，请耐心等待...</template>
+        <template v-else>
+          <span>{{ messagesError }}</span>
+          <button v-if="retryConversation" type="button" @click="loadMessages(retryConversation)">重试</button>
+        </template>
+      </div>
     </div>
   </a-modal>
 </template>
@@ -82,6 +88,10 @@ const activeConversationId = ref('')
 const retryConversation = ref<GuideConversationSummary | null>(null)
 let listRequest: AbortController | null = null
 let messagesRequest: AbortController | null = null
+const historyModalBodyStyle = {
+  height: 'clamp(240px, 58vh, 420px)',
+  overflow: 'hidden',
+}
 
 const close = () => emit('update:open', false)
 
@@ -184,7 +194,7 @@ onBeforeUnmount(cancelRequests)
 
 <style scoped lang="less">
 .history-modal__list { display: grid; gap: 9px; height: 100%; overflow-y: auto; padding: 2px; scrollbar-gutter: stable; }
-.history-modal__content { position: relative; height: clamp(240px, 58vh, 420px); overflow: hidden; }
+.history-modal__content { position: relative; height: 100%; min-height: 0; overflow: hidden; }
 .history-modal__item { display: grid; gap: 4px; width: 100%; padding: 11px 12px; border: 1px solid #dfe3ea; border-radius: 9px; background: #fff; color: #768197; text-align: left; cursor: pointer; transition: border-color .16s ease, background .16s ease; }
 .history-modal__item:hover, .history-modal__item.is-active { border-color: #a9c7fa; background: #f5f9ff; }
 .history-modal__title-row { display: flex; align-items: center; gap: 7px; min-width: 0; }
