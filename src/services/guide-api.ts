@@ -17,11 +17,11 @@ const GUIDE_REQUEST_ID = ''
 
 // 联调阶段由后端要求固定身份 Header；所有智能引导请求统一复用，不扩散到其他服务。
 const GUIDE_HEADERS: Record<string, string> = {
-  token: '57baaa3b-53e4-4b36-af3b-7a4d08f46625',
+  token: 'd3827b17-0a24-44ea-bcde-43c69400b6a0',
   tenantid: '1',
   uapaccesstoken:
-    'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJXRUIiLCJuYmYiOjE3ODU0NjYxMjksImRhdGEiOiJ7XCJkZXBhcnRtZW50SWRcIjoxNjYxNjM0MDUzMjM4OTUxOTM2LFwiZGVwYXJ0bWVudE5hbWVcIjpcIuWNj-S9nOWNleS9jVwiLFwiZW1haWxcIjpcIjE1MzA5MDU0NjUyQHFxLmNvbVwiLFwiZmlybUNvZGVcIjpcIjMxMjkxM1wiLFwiZmlybUlkXCI6MTcyOTgwMDc5MDc0MDA0NTgyNCxcImZpcm1OYW1lXCI6XCLlm5vlt53otKLnu4_ogYzkuJrlrabpmaJcIixcImdlbmRlclwiOjEsXCJpZFwiOjE2ODM2NjQ0NTY5OTY4ODQ0ODAsXCJtZXRhZGF0YVwiOnt9LFwicG9zaXRpb25JZHNcIjpcIjZcIixcInBvc2l0aW9uTmFtZXNcIjpcIueJuVwiLFwicmFua3NcIjpcIjIwN1wiLFwicmVhbE5hbWVcIjpcIuW8oOS4ieaWsFwiLFwic3RhdGVcIjoxLFwic3lzdGVtVHlwZVwiOjEsXCJ1c2VyTmFtZVwiOlwiemhhbmdzYW5cIixcInVzZXJUeXBlXCI6XCIxXCJ9IiwiaXNzIjoiVUFQX0FVVEgwIiwiZXhwIjoxNzg1NTAyMTI5LCJpYXQiOjE3ODU0NjYxMjksImp0aSI6ImM0ZTc1MmJiLWU0MzgtNGIwOS04MThmLTIxNzkyZTViZjE1OCJ9.kVvPISRH1UhRqH1x6oCNZIgc3UDU-r4nIB-yLmaGS4ZbV_XjZWOPRsdRzgFNcT4fu0lrTcWzjpDMsz1i-kx7VXuACsYqnVkdbw19_xfF3__xr6zc46sOLCII_nsSuexmrZVk5rlYI8t3lWkQvxnx8nOEUORXkN57alYVmcpl0d4',
-  uaprefreshtoken: 'beb457cb-f076-4700-a2b8-1d1dbf783112',
+    'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJXRUIiLCJuYmYiOjE3ODU0OTI5MjgsImRhdGEiOiJ7XCJkZXBhcnRtZW50SWRcIjoxNjYxNjM0MDUzMjM4OTUxOTM2LFwiZGVwYXJ0bWVudE5hbWVcIjpcIuWNj-S9nOWNleS9jVwiLFwiZW1haWxcIjpcIjE1MzA5MDU0NjUyQHFxLmNvbVwiLFwiZmlybUNvZGVcIjpcIjMxMjkxM1wiLFwiZmlybUlkXCI6MTcyOTgwMDc5MDc0MDA0NTgyNCxcImZpcm1OYW1lXCI6XCLlm5vlt53otKLnu4_ogYzkuJrlrabpmaJcIixcImdlbmRlclwiOjEsXCJpZFwiOjE2ODM2NjQ0NTY5OTY4ODQ0ODAsXCJtZXRhZGF0YVwiOnt9LFwicG9zaXRpb25JZHNcIjpcIjZcIixcInBvc2l0aW9uTmFtZXNcIjpcIueJuVwiLFwicmFua3NcIjpcIjIwN1wiLFwicmVhbE5hbWVcIjpcIuW8oOS4ieaWsFwiLFwic3RhdGVcIjoxLFwic3lzdGVtVHlwZVwiOjEsXCJ1c2VyTmFtZVwiOlwiemhhbmdzYW5cIixcInVzZXJUeXBlXCI6XCIxXCJ9IiwiaXNzIjoiVUFQX0FVVEgwIiwiZXhwIjoxNzg1NTI4OTI4LCJpYXQiOjE3ODU0OTI5MjgsImp0aSI6IjYzOWYwYzFmLWYwYmYtNDcwZS1hYjkwLTllZDE5ZjBkM2QxYSJ9.ggpTufvweXTwtTYOwxdvTXVVIfD3z_3Exg7_EpKyE2fvaG8S0cRdnIrr9eKVJdeJL1jnu-gO8dRULlvMvsQX7t5AmRVOvZE_8l1aDlmTpgxrKIzzOJOZPe2D3UMXMYtksk1xmDFIZnVDzxBHNLDYWyy6tf6XLRT8mFbbqlDuPMU',
+  uaprefreshtoken: '6a0570f3-319d-4c13-989e-41ce1d5fd537',
 }
 
 interface GuideResponse<T> {
@@ -336,7 +336,9 @@ const normalizeProject = (
       pointName: pickString(item.pointName, item.point_name),
       score: pickString(item.score),
     }))
-    .filter((item) => item.name || item.statusText || item.pointName || item.score)
+    .filter(
+      (item) => item.name || item.statusText || item.pointName || item.score,
+    )
   const points = pickRecordObjects(raw.points)
     .map((item) => ({
       name: pickString(item.name),
@@ -483,7 +485,10 @@ export const fetchQueryProjects = async (
       : []
   const scope = pickString(payload?.scope)
   const dimension = pickString(payload?.dimension)
-  const dimensionName = pickString(payload?.dimensionName, payload?.dimension_name)
+  const dimensionName = pickString(
+    payload?.dimensionName,
+    payload?.dimension_name,
+  )
   const projects = projectList.map((project, index) => ({
     ...normalizeProject(project, 'query', index, DEFAULT_QUERY_ACTIONS),
     scope,

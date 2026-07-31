@@ -8,7 +8,7 @@ export type { DemoMessage }
 export const DIGITAL_HUMAN_SUGGESTIONS = [
   '事后评价怎么操作？',
   '目标申报任务列表在哪里？',
-  '事后评级步骤是什么？',
+  '绩效评价流程是什么？',
   '系统管理入口在哪里？',
 ]
 

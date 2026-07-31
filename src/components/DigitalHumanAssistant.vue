@@ -72,8 +72,8 @@
 								@scroll="handleMessagesScroll">
 								<section v-if="showSuggestions" class="assistant-suggestions">
 									<small>试试这样问：</small>
-									<button v-for="item in suggestions.slice(0, 2)" :key="item" type="button"
-										class="assistant-suggestions__item" @click="sendText(item)">
+									<button v-for="item in suggestions.slice(0, 3)" :key="item" type="button"
+										class="assistant-suggestions__item" @mousedown.prevent @click="sendText(item)">
 										{{ item }}
 									</button>
 								</section>
@@ -122,6 +122,7 @@
 									</p>
 
 									<button v-if="message.routeCard" type="button" class="assistant-message__route-card"
+										@mousedown.prevent
 										@click="navigateToRoute(message.routeCard.url)">
 										<span>
 											<strong>{{ message.routeCard.title }}</strong>
@@ -164,6 +165,7 @@
 													</div>
 													<div class="assistant-message__query-actions">
 														<button v-for="action in project.actions" :key="action" type="button"
+															@mousedown.prevent
 															@click="handleQueryProjectAction(project, action)">
 															<span>{{ action }}</span>
 															<ArrowRightOutlined />
@@ -179,12 +181,23 @@
 										<strong>操作手册</strong>
 										<ul>
 											<li v-for="(item, index) in message.cooperationItems" :key="`${message.id}-cooperation-${index}`">
-												<button type="button" class="assistant-message__cooperation-card"
-													@click="handleCooperationPreview(item)">
+												<article class="assistant-message__cooperation-card">
 													<span class="assistant-message__cooperation-main">
 														<strong>{{ item.title }}</strong>
 													</span>
-												</button>
+													<div class="assistant-message__cooperation-actions">
+														<button type="button" class="assistant-message__cooperation-action"
+															aria-label="预览" data-tooltip="预览" @mousedown.prevent
+															@click="handleCooperationPreview(item)">
+															<EyeOutlined />
+														</button>
+														<button type="button" class="assistant-message__cooperation-action"
+															aria-label="下载" data-tooltip="下载" @mousedown.prevent
+															@click="handleCooperationDownload(item)">
+															<DownloadOutlined />
+														</button>
+													</div>
+												</article>
 											</li>
 										</ul>
 									</section>
@@ -202,6 +215,7 @@
 										<button v-for="candidate in message.disambiguationCandidates" :key="candidate.id" type="button"
 											class="assistant-message__candidate-card"
 											:class="{ 'is-selected': message.selectedDisambiguationCandidateId === candidate.id }"
+											@mousedown.prevent
 											@click="selectDisambiguationCandidate(message.id, candidate.id)">
 											<span>{{ candidate.label }}</span>
 											<ArrowRightOutlined />
@@ -328,10 +342,10 @@
 									</div>
 								</template>
 							</a-dropdown>
-							<a-button class="assistant-input__tool-button" type="text" aria-label="知识库" data-tooltip="知识库"
+							<!-- <a-button class="assistant-input__tool-button" type="text" aria-label="知识库" data-tooltip="知识库"
 								@click="notifyDeveloping">
 								<ReadOutlined />
-							</a-button>
+							</a-button> -->
 							<a-button class="assistant-input__tool-button" type="text" aria-label="上传文件" data-tooltip="上传文件"
 								@click="notifyDeveloping">
 								<FolderOpenOutlined />
@@ -380,6 +394,8 @@
 		</div>
 		<RecentProjectsModal v-model:open="isRecentProjectsOpen" @select-project="handleProjectSelected" />
 		<ConversationHistoryModal v-model:open="isHistoryPanelOpen" @select-messages="handleHistoryMessagesSelected" />
+		<DocumentPreviewModal v-model:open="isDocumentPreviewOpen" :title="documentPreviewTitle"
+			:url="documentPreviewUrl" />
 	</section>
 </template>
 
@@ -398,6 +414,7 @@ import {
 	ArrowRightOutlined,
 	AudioOutlined,
 	BankOutlined,
+	DownloadOutlined,
 	CloseOutlined,
 	CommentOutlined,
 	DownOutlined,
@@ -405,10 +422,10 @@ import {
 	FundOutlined,
 	HeartOutlined,
 	HistoryOutlined,
+	EyeOutlined,
 	PaperClipOutlined,
 	ProjectOutlined,
 	RadarChartOutlined,
-	ReadOutlined,
 	SendOutlined,
 	StarFilled,
 	StopOutlined,
@@ -425,6 +442,7 @@ import VideoDigitalHumanStage from './VideoDigitalHumanStage.vue'
 import EnhancedTodoPanel from './EnhancedTodoPanel.vue'
 import AiTaskBoard from './AiTaskBoard.vue'
 import ConversationHistoryModal from './ConversationHistoryModal.vue'
+import DocumentPreviewModal from './DocumentPreviewModal.vue'
 import EChartsBlock from './EChartsBlock.vue'
 import RecentProjectsModal from './RecentProjectsModal.vue'
 import {
@@ -440,6 +458,9 @@ import {
 } from '@/config/demo-config'
 
 const isRecentProjectsOpen = ref(false)
+const isDocumentPreviewOpen = ref(false)
+const documentPreviewTitle = ref('')
+const documentPreviewUrl = ref('')
 const {
 	attachProject,
 	clearConversation,
@@ -836,16 +857,25 @@ const handleQueryProjectAction = (project: GuideProjectCard, action: string) => 
 }
 
 const handleCooperationPreview = (item: GuideCooperationItem) => {
-	const downloadUrl = item.downloadUrl?.trim()
-	if (!downloadUrl) {
+	const previewUrl = item.downloadUrl?.trim()
+	if (!previewUrl) {
 		antMessage.warning('文件暂不可预览')
 		return
 	}
 
-	const opened = window.open(downloadUrl, '_blank', 'noopener,noreferrer')
-	if (!opened) {
-		window.location.assign(downloadUrl)
+	documentPreviewTitle.value = item.title || '文件预览'
+	documentPreviewUrl.value = previewUrl
+	isDocumentPreviewOpen.value = true
+}
+
+const handleCooperationDownload = (item: GuideCooperationItem) => {
+	const downloadUrl = item.downloadUrl?.trim()
+	if (!downloadUrl) {
+		antMessage.warning('文件暂不可下载')
+		return
 	}
+
+	window.open(downloadUrl, '_blank', 'noopener,noreferrer')
 }
 
 const navigateToRoute = (url: string) => {
@@ -911,6 +941,13 @@ watch(
 	},
 	{ deep: true },
 )
+
+watch(isDocumentPreviewOpen, (open) => {
+	if (!open) {
+		documentPreviewTitle.value = ''
+		documentPreviewUrl.value = ''
+	}
+})
 
 onBeforeUnmount(() => {
 	if (copiedMessageTimer !== null) {
@@ -1386,7 +1423,7 @@ onBeforeUnmount(() => {
 
 .assistant-panel__stage-shell {
 	display: grid;
-	grid-template-rows: minmax(180px, 0.48fr) minmax(170px, 0.52fr);
+	grid-template-rows: minmax(190px, 0.46fr) minmax(235px, 0.54fr);
 	height: 100%;
 	min-height: 0;
 	overflow: hidden;
@@ -1570,7 +1607,7 @@ onBeforeUnmount(() => {
 }
 
 .assistant-message.is-pending {
-	opacity: 0.82;
+	opacity: 1;
 }
 
 .assistant-message__loading {
@@ -1980,18 +2017,13 @@ onBeforeUnmount(() => {
 	color: #46658f;
 	font: inherit;
 	text-align: left;
-	cursor: pointer;
+	cursor: default;
 }
 
 .assistant-message__cooperation-card:hover {
 	border-color: #7aa4f7;
 	background: #eef5ff;
 	color: #356bd0;
-}
-
-.assistant-message__cooperation-card :deep(.anticon) {
-	flex: none;
-	font-size: 13px;
 }
 
 .assistant-message__cooperation-main {
@@ -2009,6 +2041,37 @@ onBeforeUnmount(() => {
 	line-height: 18px;
 	overflow-wrap: anywhere;
 	word-break: break-word;
+}
+
+.assistant-message__cooperation-actions {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	gap: 6px;
+}
+
+.assistant-message__cooperation-action {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: 0;
+	border-radius: 7px;
+	background: rgba(79, 120, 255, 0.09);
+	color: #4f72ff;
+	cursor: pointer;
+	transition: background-color .16s ease, color .16s ease;
+}
+
+.assistant-message__cooperation-action:hover {
+	background: rgba(79, 120, 255, 0.18);
+	color: #345fe0;
+}
+
+.assistant-message__cooperation-action :deep(.anticon) {
+	font-size: 13px;
 }
 
 .assistant-message__cooperation-title-row {
@@ -2400,7 +2463,7 @@ onBeforeUnmount(() => {
 	}
 
 	.assistant-panel__stage-shell {
-		grid-template-rows: minmax(170px, 0.48fr) minmax(150px, 0.52fr);
+		grid-template-rows: minmax(170px, 0.42fr) minmax(210px, 0.58fr);
 		height: 100%;
 		border-radius: 18px;
 	}
@@ -2501,7 +2564,7 @@ onBeforeUnmount(() => {
 
 	.assistant-panel.is-wide .assistant-panel__stage-shell {
 		grid-template-columns: none;
-		grid-template-rows: minmax(180px, 0.48fr) minmax(170px, 0.52fr);
+		grid-template-rows: minmax(170px, 0.42fr) minmax(210px, 0.58fr);
 	}
 
 	.assistant-panel.is-wide .assistant-panel__chat-card {
@@ -2763,13 +2826,12 @@ onBeforeUnmount(() => {
 	font-size: 12px;
 	line-height: 20px;
 	cursor: pointer;
-	transition: background-color .16s ease, color .16s ease, transform .16s ease;
+	transition: background-color .16s ease, color .16s ease;
 }
 
 .assistant-suggestions__item:hover {
 	background: #fff;
 	color: #357feb;
-	transform: translateY(-1px);
 }
 
 .assistant-panel__body {
@@ -2785,7 +2847,7 @@ onBeforeUnmount(() => {
 }
 
 .assistant-panel__stage-shell {
-	grid-template-rows: minmax(245px, .58fr) minmax(180px, .42fr);
+	grid-template-rows: minmax(190px, .46fr) minmax(235px, .54fr);
 	border: 0;
 	border-radius: 20px;
 	background: #fafaf8;
