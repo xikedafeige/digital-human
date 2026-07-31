@@ -28,6 +28,7 @@ export interface GuideCooperationItem {
   title: string
   content: string
   score?: number | null
+  downloadUrl?: string
   metadata?: Record<string, unknown>
 }
 
@@ -38,6 +39,56 @@ export interface GuideDisambiguationCandidate {
   subIntent: string
   routeId: string
   keyword: string
+}
+
+export interface GuideProjectMetric {
+  label: string
+  value: string
+}
+
+export interface GuideProjectSubtask {
+  name: string
+  statusText: string
+  pointName?: string
+  score?: string
+}
+
+export interface GuideProjectPoint {
+  name: string
+  statusText: string
+}
+
+export interface GuideProjectCard {
+  id: string
+  todoId: string
+  title: string
+  projectName: string
+  taskType: number | null
+  taskTypeName: string
+  todoCategory: string
+  currentStageName: string
+  time: string
+  deadline: string
+  initiatorName: string
+  createTime: string
+  durationDesc: string
+  statusText: string
+  actions: string[]
+  isUrgent: boolean
+  source: 'recent' | 'todo' | 'query'
+  commissionTaskId: string
+  stage: GuideProjectStage | ''
+  stageName: string
+  chargePersonName?: string
+  metrics?: GuideProjectMetric[]
+  subtaskCount?: number | null
+  subtasks?: GuideProjectSubtask[]
+  pointCount?: number | null
+  points?: GuideProjectPoint[]
+  scope?: string
+  dimension?: string
+  dimensionName?: string
+  raw: Record<string, unknown>
 }
 
 export type MessageRenderBlock =
@@ -69,6 +120,7 @@ export interface DemoMessage {
   routeCard?: GuideRouteCard
   suggestions?: string[]
   cooperationItems?: GuideCooperationItem[]
+  queryProjects?: GuideProjectCard[]
   disambiguationCandidates?: GuideDisambiguationCandidate[]
   disambiguationQuery?: string
   selectedDisambiguationCandidateId?: string

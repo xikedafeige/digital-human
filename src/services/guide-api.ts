@@ -2,12 +2,16 @@
 import type {
   GuideCooperationItem,
   GuideDisambiguationCandidate,
+  GuideProjectCard,
   GuideProjectContext,
   GuideProjectStage,
 } from '@/types/avatar-types'
 
-const GUIDE_API_BASE_URL = 'http://da6a2a65.natappfree.cc'
+export type { GuideProjectCard } from '@/types/avatar-types'
+
+const GUIDE_API_BASE_URL = 'http://172.16.7.53:8300'
 const GUIDE_API_PREFIX = '/api/v1/guide'
+const GUIDE_KNOWLEDGE_FILE_BASE_URL = 'http://172.16.7.54:9000'
 const GUIDE_USER_ID = '1696097681761374208'
 const GUIDE_REQUEST_ID = ''
 
@@ -70,6 +74,19 @@ interface GuideProjectPayload {
   initiate_time?: unknown
   urgencyLevel?: unknown
   urgency_level?: unknown
+  chargePersonName?: unknown
+  charge_person_name?: unknown
+  metrics?: unknown
+  subtaskCount?: unknown
+  subtask_count?: unknown
+  subtasks?: unknown
+  pointCount?: unknown
+  point_count?: unknown
+  points?: unknown
+  scope?: unknown
+  dimension?: unknown
+  dimensionName?: unknown
+  dimension_name?: unknown
   formUrl?: unknown
   form_url?: unknown
   businessPattern?: unknown
@@ -84,36 +101,20 @@ interface GuideProjectListPayload {
   rows?: unknown
 }
 
-interface GuideCooperationPayload {
-  title?: unknown
-  content?: unknown
-  score?: unknown
-  metadata?: unknown
-  [key: string]: unknown
-}
-
-export interface GuideProjectCard {
-  id: string
-  todoId: string
-  title: string
-  projectName: string
-  taskType: number | null
-  taskTypeName: string
-  todoCategory: string
-  currentStageName: string
-  time: string
-  deadline: string
-  initiatorName: string
-  createTime: string
-  durationDesc: string
-  statusText: string
-  actions: string[]
-  isUrgent: boolean
-  source: 'recent' | 'todo'
-  commissionTaskId: string
-  stage: GuideProjectStage | ''
-  stageName: string
-  raw: GuideProjectPayload
+interface GuideQueryProjectsPayload {
+  projects?: GuideProjectPayload[] | Record<string, GuideProjectPayload[]>
+  total?: unknown
+  shown?: unknown
+  metricLoaded?: unknown
+  metric_loaded?: unknown
+  scope?: unknown
+  taskTypes?: unknown
+  task_types?: unknown
+  keywords?: unknown
+  dimension?: unknown
+  dimensionName?: unknown
+  dimension_name?: unknown
+  message?: unknown
 }
 
 export interface GuideTodoProjectGroups {
@@ -127,6 +128,19 @@ export interface GuideRecentProjectsPage {
   total: number
   page: number
   rows: number
+}
+
+export interface GuideQueryProjectsPage {
+  projects: GuideProjectCard[]
+  total: number
+  shown: number
+  metricLoaded: number
+  scope: string
+  taskTypes: string[]
+  keywords: string[]
+  dimension: string
+  dimensionName: string
+  message?: string
 }
 
 export interface GuideConversationSummary {
@@ -189,7 +203,7 @@ const pickRecordArray = (value: unknown) =>
 const pickRecordObjects = (value: unknown) =>
   Array.isArray(value)
     ? value.filter(
-        (item): item is GuideCooperationPayload =>
+        (item): item is Record<string, unknown> =>
           Boolean(item) && typeof item === 'object' && !Array.isArray(item),
       )
     : []
@@ -202,6 +216,7 @@ const ACTION_LABELS: Record<string, string> = {
 }
 
 const DEFAULT_TODO_ACTIONS = ['提问', '写报告', '审核', '问数']
+const DEFAULT_QUERY_ACTIONS = ['提问', '问数']
 
 const TODO_STAGE_MAP: Record<string, GuideProjectStage> = {
   绩效目标申报: 'target_declaration',
@@ -229,6 +244,7 @@ const normalizeProject = (
   raw: GuideProjectPayload,
   source: GuideProjectCard['source'],
   index: number,
+  actionsOverride?: string[],
 ): GuideProjectCard => {
   const taskType = pickNumber(raw.taskType, raw.task_type)
   const category = pickString(
@@ -248,11 +264,15 @@ const normalizeProject = (
         : '普通'
       : pickString(raw.statusText, raw.status_text, raw.status, '进行中')
   const rawActions = pickRecordArray(raw.cardActions)
-  const actions = rawActions.length
-    ? rawActions
-        .map((action) => ACTION_LABELS[action] ?? action)
-        .filter(Boolean)
-    : DEFAULT_TODO_ACTIONS
+  const actions = actionsOverride?.length
+    ? actionsOverride
+    : rawActions.length
+      ? rawActions
+          .map((action) => ACTION_LABELS[action] ?? action)
+          .filter(Boolean)
+      : source === 'query'
+        ? DEFAULT_QUERY_ACTIONS
+        : DEFAULT_TODO_ACTIONS
   const projectName = pickString(
     raw.projectName,
     raw.project_name,
@@ -291,6 +311,8 @@ const normalizeProject = (
     raw.name,
     raw.processDefinitionName,
     raw.process_definition_name,
+    raw.taskTypeName,
+    raw.task_type_name,
   )
   const durationDesc = pickString(raw.durationDesc, raw.duration_desc)
   const createTime = pickString(
@@ -301,6 +323,26 @@ const normalizeProject = (
     raw.startDate,
     raw.start_date,
   )
+  const metrics = pickRecordObjects(raw.metrics)
+    .map((item) => ({
+      label: pickString(item.label),
+      value: pickString(item.value),
+    }))
+    .filter((item) => item.label || item.value)
+  const subtasks = pickRecordObjects(raw.subtasks)
+    .map((item) => ({
+      name: pickString(item.name),
+      statusText: pickString(item.statusText, item.status_text, '进行中'),
+      pointName: pickString(item.pointName, item.point_name),
+      score: pickString(item.score),
+    }))
+    .filter((item) => item.name || item.statusText || item.pointName || item.score)
+  const points = pickRecordObjects(raw.points)
+    .map((item) => ({
+      name: pickString(item.name),
+      statusText: pickString(item.statusText, item.status_text, '进行中'),
+    }))
+    .filter((item) => item.name || item.statusText)
 
   return {
     id,
@@ -317,6 +359,8 @@ const normalizeProject = (
       raw.initiatorName,
       raw.initiator_name,
       raw.startUserName,
+      raw.chargePersonName,
+      raw.charge_person_name,
     ),
     createTime,
     durationDesc,
@@ -330,6 +374,20 @@ const normalizeProject = (
     commissionTaskId,
     stage,
     stageName,
+    chargePersonName: pickString(
+      raw.chargePersonName,
+      raw.charge_person_name,
+      raw.initiatorName,
+      raw.initiator_name,
+    ),
+    metrics: metrics.length ? metrics : undefined,
+    subtaskCount: pickNumber(raw.subtaskCount, raw.subtask_count),
+    subtasks: subtasks.length ? subtasks : undefined,
+    pointCount: pickNumber(raw.pointCount, raw.point_count),
+    points: points.length ? points : undefined,
+    scope: pickString(raw.scope),
+    dimension: pickString(raw.dimension),
+    dimensionName: pickString(raw.dimensionName, raw.dimension_name),
     raw,
   }
 }
@@ -378,7 +436,7 @@ const requestGuide = async <T>(
 
 export const fetchRecentProjects = async (
   page = 1,
-  rows = 6,
+  rows = 200,
   signal?: AbortSignal,
 ): Promise<GuideRecentProjectsPage> => {
   const payload = await requestGuide<GuideProjectListPayload>(
@@ -395,6 +453,60 @@ export const fetchRecentProjects = async (
     total: pickNumber(payload?.total) ?? normalizedProjects.length,
     page: pickNumber(payload?.page) ?? page,
     rows: pickNumber(payload?.rows) ?? rows,
+  }
+}
+
+export const fetchQueryProjects = async (
+  query: string,
+  signal?: AbortSignal,
+  projectIds: string[] = [],
+): Promise<GuideQueryProjectsPage> => {
+  const payload = await requestGuide<GuideQueryProjectsPayload>(
+    '/query/projects',
+    {
+      method: 'POST',
+      body: {
+        query,
+        project_ids: projectIds,
+        user_id: GUIDE_USER_ID,
+      },
+      signal,
+    },
+  )
+  const rawProjects = payload?.projects
+  const projectList = Array.isArray(rawProjects)
+    ? rawProjects
+    : rawProjects && typeof rawProjects === 'object'
+      ? Object.values(rawProjects).flatMap((projects) =>
+          Array.isArray(projects) ? projects : [],
+        )
+      : []
+  const scope = pickString(payload?.scope)
+  const dimension = pickString(payload?.dimension)
+  const dimensionName = pickString(payload?.dimensionName, payload?.dimension_name)
+  const projects = projectList.map((project, index) => ({
+    ...normalizeProject(project, 'query', index, DEFAULT_QUERY_ACTIONS),
+    scope,
+    dimension,
+    dimensionName,
+  }))
+  const taskTypes = pickRecordArray(payload?.taskTypes).length
+    ? pickRecordArray(payload?.taskTypes)
+    : pickRecordArray(payload?.task_types)
+
+  return {
+    projects,
+    total: pickNumber(payload?.total) ?? projects.length,
+    shown: pickNumber(payload?.shown) ?? projects.length,
+    metricLoaded:
+      pickNumber(payload?.metricLoaded, payload?.metric_loaded) ??
+      projects.filter((project) => project.metrics?.length).length,
+    scope,
+    taskTypes,
+    keywords: pickRecordArray(payload?.keywords),
+    dimension,
+    dimensionName,
+    message: pickString(payload?.message),
   }
 }
 
@@ -528,15 +640,20 @@ const normalizeSearchResult = (
         .filter((candidate) => candidate.label)
     : []
   const cooperationItems = pickRecordObjects(raw.items)
-    .map((item) => ({
-      title: pickString(item.title),
-      content: pickString(item.content),
-      score: pickNumber(item.score),
-      metadata:
+    .map((item) => {
+      const metadata =
         item.metadata && typeof item.metadata === 'object'
           ? (item.metadata as Record<string, unknown>)
-          : undefined,
-    }))
+          : {}
+
+      return {
+        title: pickString(item.title, metadata.title),
+        content: pickString(item.content),
+        score: pickNumber(item.score, metadata.score),
+        downloadUrl: pickCooperationDownloadUrl(item, metadata),
+        metadata,
+      }
+    })
     .filter((item) => item.title || item.content)
 
   return {
@@ -646,6 +763,44 @@ const pickSseSuggestions = (payload: GuideSsePayload) => {
   const nested = payload.data ?? {}
   return pickRecordArray(payload.suggestions ?? nested.suggestions)
 }
+
+const buildGuideDownloadUrl = (value: string) => {
+  if (!value) {
+    return ''
+  }
+
+  try {
+    const url = new URL(value, GUIDE_KNOWLEDGE_FILE_BASE_URL)
+    if (url.protocol === 'http:' || url.protocol === 'https:') {
+      return url.href
+    }
+  } catch {
+    return ''
+  }
+
+  return ''
+}
+
+const pickCooperationDownloadUrl = (
+  item: Record<string, unknown>,
+  metadata: Record<string, unknown>,
+) =>
+  buildGuideDownloadUrl(
+    pickString(
+      item.downloadUrl,
+      item.download_url,
+      item.fileUrl,
+      item.file_url,
+      item.url,
+      item.path,
+      metadata.downloadUrl,
+      metadata.download_url,
+      metadata.fileUrl,
+      metadata.file_url,
+      metadata.url,
+      metadata.path,
+    ),
+  )
 
 const streamGuideReply = async (
   path: string,

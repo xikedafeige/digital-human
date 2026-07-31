@@ -9,48 +9,60 @@
     @cancel="close"
   >
     <div class="recent-projects-content">
-      <div v-if="isInitialLoading" class="recent-projects-state">正在加载中，请耐心等待...</div>
-      <div v-else-if="errorMessage && !projects.length" class="recent-projects-state is-error">
-        <span>{{ errorMessage }}</span>
-        <button type="button" @click="loadProjects(1)">重新加载</button>
+      <div class="recent-projects-search">
+        <a-input
+          v-model:value="searchKeyword"
+          allow-clear
+          placeholder="搜索项目名称"
+          size="small"
+        />
       </div>
-      <div v-else-if="!projects.length" class="recent-projects-state">暂无近期项目</div>
 
-      <div v-else ref="projectsListRef" class="recent-projects-list" @scroll="handleProjectsScroll">
-        <article v-for="project in projects" :key="project.id" class="recent-project-card">
-          <span class="recent-project-card__dot"></span>
-          <div class="recent-project-card__main">
-            <a-tooltip :title="project.title">
-              <strong>{{ project.title }}</strong>
-            </a-tooltip>
-            <a-tooltip :title="project.deadline || '—'">
-              <time>{{ project.deadline || '—' }}</time>
-            </a-tooltip>
-            <div class="recent-project-card__meta">
-              <a-tooltip :title="project.taskTypeName || '—'">
-                <span class="recent-project-card__type">{{ project.taskTypeName || '—' }}</span>
-              </a-tooltip>
-              <a-tooltip :title="project.currentStageName || '进行中'">
-                <span class="recent-project-card__stage">{{ project.currentStageName || '进行中' }}</span>
-              </a-tooltip>
-            </div>
-          </div>
-          <span class="recent-project-card__badge" :class="{ 'is-urgent': project.isUrgent }">{{ project.statusText }}</span>
-          <div class="recent-project-card__actions">
-            <button v-for="action in project.actions" :key="action" type="button" @click="handleAction(project, action)">
-              <component :is="actionIconMap[action]" />
-              <span>{{ action }}</span>
-            </button>
-          </div>
-        </article>
-        <div class="recent-projects-list__status" aria-live="polite">
-          <span v-if="isLoadingMore">正在加载中，请耐心等待...</span>
-          <span v-else-if="errorMessage">{{ errorMessage }}</span>
+      <div class="recent-projects-body">
+        <div v-if="isInitialLoading" class="recent-projects-state">正在加载中，请耐心等待...</div>
+        <div v-else-if="errorMessage && !projects.length" class="recent-projects-state is-error">
+          <span>{{ errorMessage }}</span>
+          <button type="button" @click="loadProjects(1)">重新加载</button>
         </div>
-      </div>
+        <div v-else-if="!projects.length" class="recent-projects-state">暂无近期项目</div>
+        <div v-else-if="!visibleProjects.length" class="recent-projects-state">暂无匹配项目</div>
 
-      <div v-if="isRefreshing" class="recent-projects-loading-mask" aria-live="polite">
-        <span>正在加载中，请耐心等待...</span>
+        <div v-else ref="projectsListRef" class="recent-projects-list" @scroll="handleProjectsScroll">
+          <article v-for="project in visibleProjects" :key="project.id" class="recent-project-card">
+            <span class="recent-project-card__dot"></span>
+            <div class="recent-project-card__main">
+              <a-tooltip :title="project.title">
+                <strong>{{ project.title }}</strong>
+              </a-tooltip>
+              <a-tooltip :title="project.deadline || '—'">
+                <time>{{ project.deadline || '—' }}</time>
+              </a-tooltip>
+              <div class="recent-project-card__meta">
+                <a-tooltip :title="project.taskTypeName || '—'">
+                  <span class="recent-project-card__type">{{ project.taskTypeName || '—' }}</span>
+                </a-tooltip>
+                <a-tooltip :title="project.currentStageName || '进行中'">
+                  <span class="recent-project-card__stage">{{ project.currentStageName || '进行中' }}</span>
+                </a-tooltip>
+              </div>
+            </div>
+            <span class="recent-project-card__badge" :class="{ 'is-urgent': project.isUrgent }">{{ project.statusText }}</span>
+            <div class="recent-project-card__actions">
+              <button v-for="action in project.actions" :key="action" type="button" @click="handleAction(project, action)">
+                <component :is="actionIconMap[action]" />
+                <span>{{ action }}</span>
+              </button>
+            </div>
+          </article>
+          <div class="recent-projects-list__status" aria-live="polite">
+            <span v-if="isLoadingMore">正在加载中，请耐心等待...</span>
+            <span v-else-if="errorMessage">{{ errorMessage }}</span>
+          </div>
+        </div>
+
+        <div v-if="isRefreshing" class="recent-projects-loading-mask" aria-live="polite">
+          <span>正在加载中，请耐心等待...</span>
+        </div>
       </div>
     </div>
   </a-modal>
@@ -58,7 +70,12 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { Modal as AModal, Tooltip as ATooltip, message as antMessage } from 'ant-design-vue'
+import {
+  Input as AInput,
+  Modal as AModal,
+  Tooltip as ATooltip,
+  message as antMessage,
+} from 'ant-design-vue'
 import {
   AuditOutlined,
   BarChartOutlined,
@@ -87,8 +104,9 @@ const total = ref(0)
 const hasMore = ref(true)
 const loadingMode = ref<'initial' | 'refresh' | 'append' | ''>('')
 const projectsListRef = ref<HTMLElement | null>(null)
+const searchKeyword = ref('')
 let activeRequest: AbortController | null = null
-const pageSize = 6
+const pageSize = 200
 const recentProjectsModalBodyStyle = {
   height: 'clamp(260px, 58vh, 420px)',
   overflow: 'hidden',
@@ -96,6 +114,17 @@ const recentProjectsModalBodyStyle = {
 const isInitialLoading = computed(() => isLoading.value && loadingMode.value === 'initial')
 const isRefreshing = computed(() => isLoading.value && loadingMode.value === 'refresh')
 const isLoadingMore = computed(() => isLoading.value && loadingMode.value === 'append')
+const normalizedSearchKeyword = computed(() => searchKeyword.value.trim().toLowerCase())
+const visibleProjects = computed(() => {
+  const keyword = normalizedSearchKeyword.value
+  if (!keyword) {
+    return projects.value
+  }
+
+  return projects.value.filter((project) =>
+    `${project.title} ${project.projectName}`.toLowerCase().includes(keyword),
+  )
+})
 
 const actionIconMap: Record<string, unknown> = {
   提问: QuestionCircleOutlined,
@@ -167,10 +196,12 @@ watch(
   () => props.open,
   (open) => {
     if (open) {
+      searchKeyword.value = ''
       void loadProjects(1)
       return
     }
 
+    searchKeyword.value = ''
     activeRequest?.abort()
     activeRequest = null
     isLoading.value = false
@@ -178,12 +209,20 @@ watch(
   },
 )
 
+watch(searchKeyword, () => {
+  if (projectsListRef.value) {
+    projectsListRef.value.scrollTop = 0
+  }
+})
+
 onBeforeUnmount(() => activeRequest?.abort())
 </script>
 
 <style scoped lang="less">
 .recent-projects-content { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; }
-.recent-projects-list { display: grid; flex: 1; gap: 12px; min-height: 0; overflow-y: auto; padding: 2px 2px 4px; scrollbar-gutter: stable; }
+.recent-projects-search { flex: none; margin-bottom: 10px; }
+.recent-projects-body { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.recent-projects-list { display: grid; height: 100%; gap: 12px; min-height: 0; overflow-y: auto; padding: 2px 2px 4px; scrollbar-gutter: stable; }
 .recent-project-card { position: relative; display: grid; grid-template-columns: 8px minmax(0, 1fr); gap: 7px 3px; min-height: 128px; padding: 14px 10px 11px; border: 1px solid #dfe2e7; border-radius: 8px; background: #fff; box-shadow: 0 2px 5px rgba(50, 59, 75, .045); }
 .recent-project-card__dot { width: 5px; height: 5px; margin-top: 5px; border-radius: 50%; background: #ff3041; }
 .recent-project-card__main { display: grid; grid-template-columns: minmax(0, 1fr) 96px; align-items: start; gap: 7px; padding-right: 70px; }

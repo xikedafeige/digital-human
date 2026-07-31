@@ -15,6 +15,7 @@ import type {
   SpeechSynthesisResult,
 } from '@/types/avatar-types'
 import {
+  fetchQueryProjects,
   searchGuide,
   streamGuideProject,
   streamGuideQa,
@@ -120,6 +121,7 @@ const createMessage = (
       | 'renderBlocks'
       | 'routeCard'
       | 'suggestions'
+      | 'queryProjects'
       | 'disambiguationCandidates'
       | 'disambiguationQuery'
       | 'selectedDisambiguationCandidateId'
@@ -142,6 +144,7 @@ const createMessage = (
   renderBlocks: options.renderBlocks,
   routeCard: options.routeCard,
   suggestions: options.suggestions,
+  queryProjects: options.queryProjects,
   disambiguationCandidates: options.disambiguationCandidates,
   disambiguationQuery: options.disambiguationQuery,
   selectedDisambiguationCandidateId:
@@ -1185,7 +1188,9 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
       Partial<
         Pick<
           DemoMessage,
-          'disambiguationCandidates' | 'disambiguationQuery'
+          | 'queryProjects'
+          | 'disambiguationCandidates'
+          | 'disambiguationQuery'
         >
       > & {
         engine?: DemoMessage['engine']
@@ -1201,6 +1206,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     targetMessage.routeCard = messageOptions.routeCard
     targetMessage.suggestions = messageOptions.suggestions
     targetMessage.cooperationItems = messageOptions.cooperationItems
+    targetMessage.queryProjects = messageOptions.queryProjects
     targetMessage.disambiguationCandidates =
       messageOptions.disambiguationCandidates
     targetMessage.disambiguationQuery = messageOptions.disambiguationQuery
@@ -1224,7 +1230,8 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     return Boolean(
       parsedContent.bodyMarkdown ||
         messageOptions.routeCard ||
-        messageOptions.cooperationItems?.length,
+        messageOptions.cooperationItems?.length ||
+        messageOptions.queryProjects?.length,
     )
   }
 
@@ -1280,6 +1287,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
       assistantMessage.renderBlocks = undefined
       assistantMessage.routeCard = undefined
       assistantMessage.suggestions = undefined
+      assistantMessage.queryProjects = undefined
       assistantMessage.cooperationItems = undefined
       assistantMessage.disambiguationCandidates = undefined
       assistantMessage.disambiguationQuery = undefined
@@ -1375,8 +1383,45 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
           return
         }
 
-        conversationId.value =
+        const nextConversationId =
           searchResult.conversationId || conversationId.value
+        if (searchResult.intent === 'query' || searchResult.action === 'call_smart_query_api') {
+          const queryResult = await fetchQueryProjects(question, guideController.signal)
+          if (flowId !== activeFlowId) {
+            return
+          }
+
+          const queryReplyText =
+            queryResult.message ||
+            searchResult.description ||
+            (queryResult.projects.length
+              ? '已为您查询到相关绩效任务。'
+              : '未查询到相关绩效任务。')
+
+          console.log('[guide/query/projects] final', {
+            query: question,
+            answer: queryReplyText,
+            projects: queryResult.projects.length,
+            total: queryResult.total,
+            shown: queryResult.shown,
+          })
+
+          completeGuideReply(flowId, assistantMessageId, queryReplyText, {
+            conversationId: conversationId.value,
+            routeCard: undefined,
+            suggestions: undefined,
+            cooperationItems: undefined,
+            queryProjects: queryResult.projects,
+            disambiguationCandidates: undefined,
+            disambiguationQuery: undefined,
+            projectContext: undefined,
+            requestMode: 'global',
+            speak: false,
+          })
+          return
+        }
+
+        conversationId.value = nextConversationId
         if (searchResult.intent === 'qa') {
           shouldSpeak = true
           const streamResult = await streamGuideQa(

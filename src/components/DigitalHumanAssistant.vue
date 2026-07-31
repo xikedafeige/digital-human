@@ -130,20 +130,59 @@
 										<ArrowRightOutlined />
 									</button>
 
+									<section v-if="message.queryProjects?.length" class="assistant-message__query-projects"
+										aria-label="数据查询结果">
+										<strong>绩效任务卡片</strong>
+										<ul>
+											<li v-for="project in message.queryProjects" :key="`${message.id}-query-${project.id}`">
+												<article class="assistant-message__query-card">
+													<header class="assistant-message__query-head">
+														<div class="assistant-message__query-title-row">
+															<a-tooltip :title="project.title">
+																<strong>{{ project.title }}</strong>
+															</a-tooltip>
+															<span class="assistant-message__query-status">{{ project.statusText }}</span>
+														</div>
+														<a-tooltip :title="project.deadline || '—'">
+															<small>{{ project.deadline || '—' }}</small>
+														</a-tooltip>
+													</header>
+													<div class="assistant-message__query-meta">
+														<a-tooltip :title="project.taskTypeName || '—'">
+															<span>{{ project.taskTypeName || '—' }}</span>
+														</a-tooltip>
+														<a-tooltip :title="project.chargePersonName || '—'">
+															<span>负责人：{{ project.chargePersonName || '—' }}</span>
+														</a-tooltip>
+														<span v-if="project.subtaskCount !== null && project.subtaskCount !== undefined">子任务：{{ project.subtaskCount }}</span>
+														<span v-if="project.pointCount !== null && project.pointCount !== undefined">点位：{{ project.pointCount }}</span>
+													</div>
+													<div v-if="project.metrics?.length" class="assistant-message__query-metrics">
+														<span v-for="metric in project.metrics" :key="`${project.id}-${metric.label}`">
+															{{ metric.label }}：{{ metric.value }}
+														</span>
+													</div>
+													<div class="assistant-message__query-actions">
+														<button v-for="action in project.actions" :key="action" type="button"
+															@click="handleQueryProjectAction(project, action)">
+															<span>{{ action }}</span>
+															<ArrowRightOutlined />
+														</button>
+													</div>
+												</article>
+											</li>
+										</ul>
+									</section>
+
 									<section v-if="message.cooperationItems?.length" class="assistant-message__cooperation"
 										aria-label="操作手册">
 										<strong>操作手册</strong>
 										<ul>
 											<li v-for="(item, index) in message.cooperationItems" :key="`${message.id}-cooperation-${index}`">
-												<button type="button" class="assistant-message__cooperation-card" @click="notifyDeveloping">
+												<button type="button" class="assistant-message__cooperation-card"
+													@click="handleCooperationDownload(item)">
 													<span class="assistant-message__cooperation-main">
-														<span class="assistant-message__cooperation-title-row">
-															<strong>{{ item.title }}</strong>
-															<small v-if="item.score !== undefined && item.score !== null">
-																{{ typeof item.score === 'number' ? item.score.toFixed(2) : item.score }}
-															</small>
-														</span>
-														<p v-if="item.content">{{ item.content }}</p>
+														<strong>{{ item.title }}</strong>
 													</span>
 													<ArrowRightOutlined />
 												</button>
@@ -347,7 +386,12 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { Button as AButton, Dropdown as ADropdown, message as antMessage } from 'ant-design-vue'
+import {
+	Button as AButton,
+	Dropdown as ADropdown,
+	Tooltip as ATooltip,
+	message as antMessage,
+} from 'ant-design-vue'
 import {
 	AlertOutlined,
 	ApartmentOutlined,
@@ -371,6 +415,7 @@ import {
 	StopOutlined,
 } from '@ant-design/icons-vue'
 import type { DemoMessage } from '@/types/avatar-types'
+import type { GuideCooperationItem } from '@/types/avatar-types'
 import {
 	markdownToPlainText,
 	renderMarkdownToHtml,
@@ -780,6 +825,32 @@ const handleProjectSelected = (project: GuideProjectCard) => {
 	attachProject(project)
 	activeTab.value = 'assistant'
 	isRecentProjectsOpen.value = false
+}
+
+const handleQueryProjectAction = (project: GuideProjectCard, action: string) => {
+	if (action === '提问') {
+		handleProjectSelected(project)
+		return
+	}
+
+	notifyDeveloping()
+}
+
+const handleCooperationDownload = (item: GuideCooperationItem) => {
+	const downloadUrl = item.downloadUrl?.trim()
+	if (!downloadUrl) {
+		antMessage.warning('文件暂不可下载')
+		return
+	}
+
+	const link = document.createElement('a')
+	link.href = downloadUrl
+	link.target = '_blank'
+	link.rel = 'noopener noreferrer'
+	link.download = item.title || ''
+	document.body.appendChild(link)
+	link.click()
+	document.body.removeChild(link)
 }
 
 const navigateToRoute = (url: string) => {
@@ -1935,6 +2006,16 @@ onBeforeUnmount(() => {
 	gap: 4px;
 }
 
+.assistant-message__cooperation-main strong {
+	display: block;
+	min-width: 0;
+	color: #315a9f;
+	font-size: 12px;
+	line-height: 18px;
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
 .assistant-message__cooperation-title-row {
 	display: flex;
 	align-items: center;
@@ -1968,6 +2049,148 @@ onBeforeUnmount(() => {
 	color: #5d6d84;
 	font-size: 11px;
 	line-height: 1.6;
+}
+
+.assistant-message__query-projects {
+	display: grid;
+	gap: 7px;
+	min-width: 0;
+	max-width: 100%;
+	margin-top: 10px;
+	padding: 10px 12px;
+	border-radius: 10px;
+	background: #f7f8fb;
+}
+
+.assistant-message__query-projects > strong {
+	color: #68758a;
+	font-size: 11px;
+	line-height: 17px;
+}
+
+.assistant-message__query-projects ul {
+	display: grid;
+	gap: 8px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.assistant-message__query-card {
+	display: grid;
+	gap: 8px;
+	min-width: 0;
+	max-width: 100%;
+	padding: 10px 12px;
+	border: 1px solid rgba(179, 199, 240, 0.88);
+	border-radius: 10px;
+	background: #fff;
+	box-shadow: 0 5px 14px rgba(77, 89, 112, 0.04);
+}
+
+.assistant-message__query-head {
+	display: grid;
+	gap: 4px;
+}
+
+.assistant-message__query-title-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+
+.assistant-message__query-title-row strong {
+	display: block;
+	flex: 1;
+	min-width: 0;
+	color: #315a9f;
+	font-size: 12px;
+	line-height: 18px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.assistant-message__query-status {
+	flex: none;
+	padding: 2px 7px;
+	border-radius: 999px;
+	background: #eaf2ff;
+	color: #4267e8;
+	font-size: 10px;
+	line-height: 16px;
+	white-space: nowrap;
+}
+
+.assistant-message__query-head small {
+	color: #7b8da9;
+	font-size: 10px;
+	line-height: 16px;
+}
+
+.assistant-message__query-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 5px 6px;
+	min-width: 0;
+	color: #5d6d84;
+	font-size: 11px;
+	line-height: 17px;
+}
+
+.assistant-message__query-meta span,
+.assistant-message__query-metrics span {
+	display: inline-flex;
+	min-width: 0;
+	max-width: 100%;
+	padding: 2px 8px;
+	border-radius: 999px;
+	background: #f5f7ff;
+	color: #4a5f8f;
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
+.assistant-message__query-metrics {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	min-width: 0;
+}
+
+.assistant-message__query-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	min-width: 0;
+}
+
+.assistant-message__query-actions button {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+	padding: 6px 10px;
+	border: 1px solid rgba(179, 199, 240, 0.88);
+	border-radius: 8px;
+	background: #f8fbff;
+	color: #46658f;
+	font: inherit;
+	font-size: 11px;
+	line-height: 16px;
+	cursor: pointer;
+}
+
+.assistant-message__query-actions button:hover {
+	border-color: #7aa4f7;
+	background: #eef5ff;
+	color: #356bd0;
+}
+
+.assistant-message__query-actions button :deep(.anticon) {
+	flex: none;
+	font-size: 12px;
 }
 
 .assistant-message__speech-progress {
