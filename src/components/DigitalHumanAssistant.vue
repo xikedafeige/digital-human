@@ -122,8 +122,7 @@
 									</p>
 
 									<button v-if="message.routeCard" type="button" class="assistant-message__route-card"
-										@mousedown.prevent
-										@click="navigateToRoute(message.routeCard.url)">
+										@mousedown.prevent @click="navigateToRoute(message.routeCard.url)">
 										<span>
 											<strong>{{ message.routeCard.title }}</strong>
 											<small>{{ message.routeCard.url }}</small>
@@ -155,8 +154,12 @@
 														<a-tooltip :title="project.chargePersonName || '—'">
 															<span>负责人：{{ project.chargePersonName || '—' }}</span>
 														</a-tooltip>
-														<span v-if="project.subtaskCount !== null && project.subtaskCount !== undefined">子任务：{{ project.subtaskCount }}</span>
-														<span v-if="project.pointCount !== null && project.pointCount !== undefined">点位：{{ project.pointCount }}</span>
+														<span v-if="project.subtaskCount !== null && project.subtaskCount !== undefined">子任务：{{
+															project.subtaskCount
+														}}</span>
+														<span v-if="project.pointCount !== null && project.pointCount !== undefined">点位：{{
+															project.pointCount
+														}}</span>
 													</div>
 													<div v-if="project.metrics?.length" class="assistant-message__query-metrics">
 														<span v-for="metric in project.metrics" :key="`${project.id}-${metric.label}`">
@@ -164,8 +167,7 @@
 														</span>
 													</div>
 													<div class="assistant-message__query-actions">
-														<button v-for="action in project.actions" :key="action" type="button"
-															@mousedown.prevent
+														<button v-for="action in project.actions" :key="action" type="button" @mousedown.prevent
 															@click="handleQueryProjectAction(project, action)">
 															<span>{{ action }}</span>
 															<ArrowRightOutlined />
@@ -186,13 +188,13 @@
 														<strong>{{ item.title }}</strong>
 													</span>
 													<div class="assistant-message__cooperation-actions">
-														<button type="button" class="assistant-message__cooperation-action"
-															aria-label="预览" data-tooltip="预览" @mousedown.prevent
+														<button type="button" class="assistant-message__cooperation-action" aria-label="预览"
+															data-tooltip="预览" @mousedown.prevent :disabled="isCooperationPreviewing(item)"
 															@click="handleCooperationPreview(item)">
 															<EyeOutlined />
 														</button>
-														<button type="button" class="assistant-message__cooperation-action"
-															aria-label="下载" data-tooltip="下载" @mousedown.prevent
+														<button type="button" class="assistant-message__cooperation-action" aria-label="下载"
+															data-tooltip="下载" @mousedown.prevent :disabled="isCooperationDownloading(item)"
 															@click="handleCooperationDownload(item)">
 															<DownloadOutlined />
 														</button>
@@ -215,8 +217,7 @@
 										<button v-for="candidate in message.disambiguationCandidates" :key="candidate.id" type="button"
 											class="assistant-message__candidate-card"
 											:class="{ 'is-selected': message.selectedDisambiguationCandidateId === candidate.id }"
-											@mousedown.prevent
-											@click="selectDisambiguationCandidate(message.id, candidate.id)">
+											@mousedown.prevent @click="selectDisambiguationCandidate(message.id, candidate.id)">
 											<span>{{ candidate.label }}</span>
 											<ArrowRightOutlined />
 										</button>
@@ -394,8 +395,6 @@
 		</div>
 		<RecentProjectsModal v-model:open="isRecentProjectsOpen" @select-project="handleProjectSelected" />
 		<ConversationHistoryModal v-model:open="isHistoryPanelOpen" @select-messages="handleHistoryMessagesSelected" />
-		<DocumentPreviewModal v-model:open="isDocumentPreviewOpen" :title="documentPreviewTitle"
-			:url="documentPreviewUrl" />
 	</section>
 </template>
 
@@ -442,10 +441,11 @@ import VideoDigitalHumanStage from './VideoDigitalHumanStage.vue'
 import EnhancedTodoPanel from './EnhancedTodoPanel.vue'
 import AiTaskBoard from './AiTaskBoard.vue'
 import ConversationHistoryModal from './ConversationHistoryModal.vue'
-import DocumentPreviewModal from './DocumentPreviewModal.vue'
 import EChartsBlock from './EChartsBlock.vue'
 import RecentProjectsModal from './RecentProjectsModal.vue'
 import {
+	fetchCooperationFile,
+	fetchCooperationPreviewUrl,
 	type GuideConversationMessage,
 	type GuideConversationSummary,
 	type GuideProjectCard,
@@ -458,9 +458,8 @@ import {
 } from '@/config/demo-config'
 
 const isRecentProjectsOpen = ref(false)
-const isDocumentPreviewOpen = ref(false)
-const documentPreviewTitle = ref('')
-const documentPreviewUrl = ref('')
+const cooperationPreviewingKeys = ref<string[]>([])
+const cooperationDownloadingKeys = ref<string[]>([])
 const {
 	attachProject,
 	clearConversation,
@@ -531,6 +530,9 @@ const shouldSkipNextMessageAutoScroll = ref(false)
 const isFollowingLatestMessage = ref(true)
 const showScrollToLatest = ref(false)
 const MESSAGE_SCROLL_BOTTOM_THRESHOLD = 32
+const shouldFollowActiveConversation = computed(
+	() => activeTab.value === 'assistant' && isBusy.value,
+)
 const copiedMessageId = ref('')
 const messageFeedbackMap = ref<Record<string, MessageFeedback | undefined>>({})
 const messageActionStateMap = ref<Record<string, MessageActionState | undefined>>({})
@@ -856,26 +858,65 @@ const handleQueryProjectAction = (project: GuideProjectCard, action: string) => 
 	notifyDeveloping()
 }
 
-const handleCooperationPreview = (item: GuideCooperationItem) => {
-	const previewUrl = item.downloadUrl?.trim()
-	if (!previewUrl) {
+const getCooperationActionKey = (item: GuideCooperationItem) =>
+	[item.previewId, item.downloadUrl, item.title].filter(Boolean).join('::')
+
+const isCooperationPreviewing = (item: GuideCooperationItem) =>
+	cooperationPreviewingKeys.value.includes(getCooperationActionKey(item))
+
+const isCooperationDownloading = (item: GuideCooperationItem) =>
+	cooperationDownloadingKeys.value.includes(getCooperationActionKey(item))
+
+const handleCooperationPreview = async (item: GuideCooperationItem) => {
+	const previewId = item.previewId?.trim()
+	const actionKey = getCooperationActionKey(item)
+	if (!previewId || !actionKey || isCooperationPreviewing(item)) {
 		antMessage.warning('文件暂不可预览')
 		return
 	}
 
-	documentPreviewTitle.value = item.title || '文件预览'
-	documentPreviewUrl.value = previewUrl
-	isDocumentPreviewOpen.value = true
+	try {
+		const previewUrl = await fetchCooperationPreviewUrl(previewId)
+		window.open(previewUrl, '_blank')
+	} catch {
+		antMessage.warning('文件暂不可预览')
+	} finally {
+		cooperationPreviewingKeys.value = cooperationPreviewingKeys.value.filter(
+			(key) => key !== actionKey,
+		)
+	}
 }
 
-const handleCooperationDownload = (item: GuideCooperationItem) => {
+const handleCooperationDownload = async (item: GuideCooperationItem) => {
 	const downloadUrl = item.downloadUrl?.trim()
-	if (!downloadUrl) {
+	const actionKey = getCooperationActionKey(item)
+	if (!downloadUrl || !actionKey || isCooperationDownloading(item)) {
 		antMessage.warning('文件暂不可下载')
 		return
 	}
 
-	window.open(downloadUrl, '_blank', 'noopener,noreferrer')
+	cooperationDownloadingKeys.value = [
+		...cooperationDownloadingKeys.value,
+		actionKey,
+	]
+	try {
+		const file = await fetchCooperationFile(downloadUrl)
+		const objectUrl = URL.createObjectURL(file)
+		const link = document.createElement('a')
+		link.href = objectUrl
+		link.download = item.title || 'file'
+		link.style.display = 'none'
+		document.body.appendChild(link)
+		link.click()
+		link.remove()
+		window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0)
+	} catch {
+		antMessage.warning('文件暂不可下载')
+	} finally {
+		cooperationDownloadingKeys.value = cooperationDownloadingKeys.value.filter(
+			(key) => key !== actionKey,
+		)
+	}
 }
 
 const navigateToRoute = (url: string) => {
@@ -931,9 +972,15 @@ watch(
 			return
 		}
 
-		if (isFollowingLatestMessage.value) {
+		if (
+			shouldFollowActiveConversation.value ||
+			isFollowingLatestMessage.value
+		) {
 			nextTick(() => {
-				if (isFollowingLatestMessage.value) {
+				if (
+					shouldFollowActiveConversation.value ||
+					isFollowingLatestMessage.value
+				) {
 					scrollMessagesToBottom()
 				}
 			})
@@ -941,13 +988,6 @@ watch(
 	},
 	{ deep: true },
 )
-
-watch(isDocumentPreviewOpen, (open) => {
-	if (!open) {
-		documentPreviewTitle.value = ''
-		documentPreviewUrl.value = ''
-	}
-})
 
 onBeforeUnmount(() => {
 	if (copiedMessageTimer !== null) {
@@ -2070,6 +2110,11 @@ onBeforeUnmount(() => {
 	color: #345fe0;
 }
 
+.assistant-message__cooperation-action:disabled {
+	cursor: not-allowed;
+	opacity: .48;
+}
+
 .assistant-message__cooperation-action :deep(.anticon) {
 	font-size: 13px;
 }
@@ -2120,7 +2165,7 @@ onBeforeUnmount(() => {
 	background: #f7f8fb;
 }
 
-.assistant-message__query-projects > strong {
+.assistant-message__query-projects>strong {
 	color: #68758a;
 	font-size: 11px;
 	line-height: 17px;

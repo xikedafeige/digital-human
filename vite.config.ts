@@ -12,5 +12,12 @@ export default defineConfig({
   server: {
     port: 5186,
     strictPort: true,
+    proxy: {
+      '/knowledge-preview-api': {
+        target: 'http://172.16.7.54',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/knowledge-preview-api/, ''),
+      },
+    },
   },
 })

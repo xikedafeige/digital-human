@@ -28,6 +28,7 @@ export interface GuideCooperationItem {
   title: string
   content: string
   score?: number | null
+  previewId?: string
   downloadUrl?: string
   metadata?: Record<string, unknown>
 }

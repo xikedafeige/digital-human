@@ -12,16 +12,17 @@ export type { GuideProjectCard } from '@/types/avatar-types'
 const GUIDE_API_BASE_URL = 'http://172.16.7.53:8300'
 const GUIDE_API_PREFIX = '/api/v1/guide'
 const GUIDE_KNOWLEDGE_FILE_BASE_URL = 'http://172.16.7.54:9000'
+const GUIDE_KNOWLEDGE_PREVIEW_PROXY_PREFIX = '/knowledge-preview-api'
 const GUIDE_USER_ID = '1696097681761374208'
 const GUIDE_REQUEST_ID = ''
 
 // 联调阶段由后端要求固定身份 Header；所有智能引导请求统一复用，不扩散到其他服务。
 const GUIDE_HEADERS: Record<string, string> = {
-  token: 'd3827b17-0a24-44ea-bcde-43c69400b6a0',
+  token: '01e6c53f-26bf-4dc3-86c7-0e769ca33bd8',
   tenantid: '1',
   uapaccesstoken:
-    'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJXRUIiLCJuYmYiOjE3ODU0OTI5MjgsImRhdGEiOiJ7XCJkZXBhcnRtZW50SWRcIjoxNjYxNjM0MDUzMjM4OTUxOTM2LFwiZGVwYXJ0bWVudE5hbWVcIjpcIuWNj-S9nOWNleS9jVwiLFwiZW1haWxcIjpcIjE1MzA5MDU0NjUyQHFxLmNvbVwiLFwiZmlybUNvZGVcIjpcIjMxMjkxM1wiLFwiZmlybUlkXCI6MTcyOTgwMDc5MDc0MDA0NTgyNCxcImZpcm1OYW1lXCI6XCLlm5vlt53otKLnu4_ogYzkuJrlrabpmaJcIixcImdlbmRlclwiOjEsXCJpZFwiOjE2ODM2NjQ0NTY5OTY4ODQ0ODAsXCJtZXRhZGF0YVwiOnt9LFwicG9zaXRpb25JZHNcIjpcIjZcIixcInBvc2l0aW9uTmFtZXNcIjpcIueJuVwiLFwicmFua3NcIjpcIjIwN1wiLFwicmVhbE5hbWVcIjpcIuW8oOS4ieaWsFwiLFwic3RhdGVcIjoxLFwic3lzdGVtVHlwZVwiOjEsXCJ1c2VyTmFtZVwiOlwiemhhbmdzYW5cIixcInVzZXJUeXBlXCI6XCIxXCJ9IiwiaXNzIjoiVUFQX0FVVEgwIiwiZXhwIjoxNzg1NTI4OTI4LCJpYXQiOjE3ODU0OTI5MjgsImp0aSI6IjYzOWYwYzFmLWYwYmYtNDcwZS1hYjkwLTllZDE5ZjBkM2QxYSJ9.ggpTufvweXTwtTYOwxdvTXVVIfD3z_3Exg7_EpKyE2fvaG8S0cRdnIrr9eKVJdeJL1jnu-gO8dRULlvMvsQX7t5AmRVOvZE_8l1aDlmTpgxrKIzzOJOZPe2D3UMXMYtksk1xmDFIZnVDzxBHNLDYWyy6tf6XLRT8mFbbqlDuPMU',
-  uaprefreshtoken: '6a0570f3-319d-4c13-989e-41ce1d5fd537',
+    'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJXRUIiLCJuYmYiOjE3ODU1NTAwNjAsImRhdGEiOiJ7XCJkZXBhcnRtZW50SWRcIjoxNjYxNjM0MDUzMjM4OTUxOTM2LFwiZGVwYXJ0bWVudE5hbWVcIjpcIuWNj-S9nOWNleS9jVwiLFwiZW1haWxcIjpcIjE1MzA5MDU0NjUyQHFxLmNvbVwiLFwiZmlybUNvZGVcIjpcIjMxMjkxM1wiLFwiZmlybUlkXCI6MTcyOTgwMDc5MDc0MDA0NTgyNCxcImZpcm1OYW1lXCI6XCLlm5vlt53otKLnu4_ogYzkuJrlrabpmaJcIixcImdlbmRlclwiOjEsXCJpZFwiOjE2ODM2NjQ0NTY5OTY4ODQ0ODAsXCJtZXRhZGF0YVwiOnt9LFwicG9zaXRpb25JZHNcIjpcIjZcIixcInBvc2l0aW9uTmFtZXNcIjpcIueJuVwiLFwicmFua3NcIjpcIjIwN1wiLFwicmVhbE5hbWVcIjpcIuW8oOS4ieaWsFwiLFwic3RhdGVcIjoxLFwic3lzdGVtVHlwZVwiOjEsXCJ1c2VyTmFtZVwiOlwiemhhbmdzYW5cIixcInVzZXJUeXBlXCI6XCIxXCJ9IiwiaXNzIjoiVUFQX0FVVEgwIiwiZXhwIjoxNzg1NTg2MDYwLCJpYXQiOjE3ODU1NTAwNjAsImp0aSI6IjRmYTE1NDA0LTVkMDEtNDliZC1iNzBiLTYzMGJhNDBmZGNkMiJ9.H25uFNIUSWtjRqHtu5rbbiB0Yx8GdqVd4MeoZgs_k_KyiDsuoVgPfeb-IOaYYQNh0vfeJ5U-RIB-66fcPDhr-vy-csW2_hYlLeujZDIDzc4C_BcXd9Er4F_GqwiLxuEqEfEcZ4ygsRSIxaHxPn_-pc6sNdwCoscK7vRAieoyO0w',
+  uaprefreshtoken: '48e145d6-51df-40a7-b598-833240f420bc',
 }
 
 interface GuideResponse<T> {
@@ -655,6 +656,7 @@ const normalizeSearchResult = (
         title: pickString(item.title, metadata.title),
         content: pickString(item.content),
         score: pickNumber(item.score, metadata.score),
+        previewId: pickString(metadata.knId),
         downloadUrl: pickCooperationDownloadUrl(item, metadata),
         metadata,
       }
@@ -806,6 +808,74 @@ const pickCooperationDownloadUrl = (
       metadata.path,
     ),
   )
+
+interface GuideFilePreviewResponse {
+  code?: unknown
+  msg?: unknown
+  message?: unknown
+  data?: unknown
+}
+
+export const fetchCooperationPreviewUrl = async (
+  previewId: string,
+  signal?: AbortSignal,
+) => {
+  const normalizedId = previewId.trim()
+  if (!normalizedId) {
+    throw new Error('文件暂不可预览')
+  }
+
+  const previewQuery = new URLSearchParams({
+    id: normalizedId,
+  })
+  const previewRequestUrl = `${GUIDE_KNOWLEDGE_PREVIEW_PROXY_PREFIX}/langwell-api/langwell-doc-server/knowledge/kn/onlinePreview?${previewQuery.toString()}`
+
+  const response = await fetch(previewRequestUrl, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      ...GUIDE_HEADERS,
+    },
+    signal,
+  })
+  const payload = (await response
+    .json()
+    .catch(() => null)) as GuideFilePreviewResponse | null
+
+  if (!response.ok || payload?.code !== 200) {
+    throw new Error(
+      pickString(payload?.msg, payload?.message, '文件暂不可预览'),
+    )
+  }
+
+  const previewUrl = buildGuideDownloadUrl(pickString(payload.data))
+  if (!previewUrl) {
+    throw new Error('文件暂不可预览')
+  }
+
+  return previewUrl
+}
+
+export const fetchCooperationFile = async (
+  downloadUrl: string,
+  signal?: AbortSignal,
+) => {
+  const normalizedUrl = buildGuideDownloadUrl(downloadUrl.trim())
+  if (!normalizedUrl) {
+    throw new Error('文件暂不可下载')
+  }
+
+  const response = await fetch(normalizedUrl, {
+    method: 'GET',
+    headers: GUIDE_HEADERS,
+    signal,
+  })
+  if (!response.ok) {
+    throw new Error(`文件下载请求失败（HTTP ${response.status}）`)
+  }
+
+  return response.blob()
+}
 
 const streamGuideReply = async (
   path: string,
