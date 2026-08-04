@@ -140,8 +140,7 @@ export const RESPONSE_TIMING = {
 const REPLY_LIBRARY = [
   {
     keywords: ['预算', '绩效'],
-    reply:
-      '预算绩效通常可以按目标拆解、预算编制、执行跟踪和结果评价四个阶段来理解。当前演示版先聚焦数字人交互链路，后续可以继续接入真实知识库和业务接口。',
+    reply: '',
   },
   {
     keywords: ['立项', '审批'],
@@ -185,8 +184,5 @@ export function buildDemoReply(question: string) {
     item.keywords.some((keyword) => normalizedQuestion.includes(keyword)),
   )
 
-  return (
-    matchedReply?.reply ??
-    '我已经收到你的问题。当前版本会先用本地模拟数据跑通数字人问答流程，后续可以继续接入真实的 ASR、TTS 和大模型能力。'
-  )
+  return matchedReply?.reply ?? ''
 }

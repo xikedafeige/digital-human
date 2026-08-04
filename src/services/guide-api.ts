@@ -2,6 +2,7 @@
 import type {
   GuideCooperationItem,
   GuideDisambiguationCandidate,
+  GuideFileResult,
   GuideProjectCard,
   GuideProjectContext,
   GuideProjectStage,
@@ -12,17 +13,18 @@ export type { GuideProjectCard } from '@/types/avatar-types'
 const GUIDE_API_BASE_URL = 'http://172.16.7.53:8300'
 const GUIDE_API_PREFIX = '/api/v1/guide'
 const GUIDE_KNOWLEDGE_FILE_BASE_URL = 'http://172.16.7.54:9000'
+const GUIDE_FILE_DOWNLOAD_BASE_URL = 'http://222.209.200.192:9377'
 const GUIDE_KNOWLEDGE_PREVIEW_PROXY_PREFIX = '/knowledge-preview-api'
 const GUIDE_USER_ID = '1696097681761374208'
 const GUIDE_REQUEST_ID = ''
 
 // 联调阶段由后端要求固定身份 Header；所有智能引导请求统一复用，不扩散到其他服务。
 const GUIDE_HEADERS: Record<string, string> = {
-  token: '01e6c53f-26bf-4dc3-86c7-0e769ca33bd8',
+  token: 'cf5db3a5-9b9c-4a13-88a3-1165bb2a5f0f',
   tenantid: '1',
   uapaccesstoken:
-    'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJXRUIiLCJuYmYiOjE3ODU1NTAwNjAsImRhdGEiOiJ7XCJkZXBhcnRtZW50SWRcIjoxNjYxNjM0MDUzMjM4OTUxOTM2LFwiZGVwYXJ0bWVudE5hbWVcIjpcIuWNj-S9nOWNleS9jVwiLFwiZW1haWxcIjpcIjE1MzA5MDU0NjUyQHFxLmNvbVwiLFwiZmlybUNvZGVcIjpcIjMxMjkxM1wiLFwiZmlybUlkXCI6MTcyOTgwMDc5MDc0MDA0NTgyNCxcImZpcm1OYW1lXCI6XCLlm5vlt53otKLnu4_ogYzkuJrlrabpmaJcIixcImdlbmRlclwiOjEsXCJpZFwiOjE2ODM2NjQ0NTY5OTY4ODQ0ODAsXCJtZXRhZGF0YVwiOnt9LFwicG9zaXRpb25JZHNcIjpcIjZcIixcInBvc2l0aW9uTmFtZXNcIjpcIueJuVwiLFwicmFua3NcIjpcIjIwN1wiLFwicmVhbE5hbWVcIjpcIuW8oOS4ieaWsFwiLFwic3RhdGVcIjoxLFwic3lzdGVtVHlwZVwiOjEsXCJ1c2VyTmFtZVwiOlwiemhhbmdzYW5cIixcInVzZXJUeXBlXCI6XCIxXCJ9IiwiaXNzIjoiVUFQX0FVVEgwIiwiZXhwIjoxNzg1NTg2MDYwLCJpYXQiOjE3ODU1NTAwNjAsImp0aSI6IjRmYTE1NDA0LTVkMDEtNDliZC1iNzBiLTYzMGJhNDBmZGNkMiJ9.H25uFNIUSWtjRqHtu5rbbiB0Yx8GdqVd4MeoZgs_k_KyiDsuoVgPfeb-IOaYYQNh0vfeJ5U-RIB-66fcPDhr-vy-csW2_hYlLeujZDIDzc4C_BcXd9Er4F_GqwiLxuEqEfEcZ4ygsRSIxaHxPn_-pc6sNdwCoscK7vRAieoyO0w',
-  uaprefreshtoken: '48e145d6-51df-40a7-b598-833240f420bc',
+    'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJXRUIiLCJuYmYiOjE3ODU4MTEyNjQsImRhdGEiOiJ7XCJkZXBhcnRtZW50SWRcIjoxNjYxNjM0MDUzMjM4OTUxOTM2LFwiZGVwYXJ0bWVudE5hbWVcIjpcIuWNj-S9nOWNleS9jVwiLFwiZW1haWxcIjpcIjE1MzA5MDU0NjUyQHFxLmNvbVwiLFwiZmlybUNvZGVcIjpcIjMxMjkxM1wiLFwiZmlybUlkXCI6MTcyOTgwMDc5MDc0MDA0NTgyNCxcImZpcm1OYW1lXCI6XCLlm5vlt53otKLnu4_ogYzkuJrlrabpmaJcIixcImdlbmRlclwiOjEsXCJpZFwiOjE2ODM2NjQ0NTY5OTY4ODQ0ODAsXCJtZXRhZGF0YVwiOnt9LFwicG9zaXRpb25JZHNcIjpcIjZcIixcInBvc2l0aW9uTmFtZXNcIjpcIueJuVwiLFwicmFua3NcIjpcIjIwN1wiLFwicmVhbE5hbWVcIjpcIuW8oOS4ieaWsFwiLFwic3RhdGVcIjoxLFwic3lzdGVtVHlwZVwiOjEsXCJ1c2VyTmFtZVwiOlwiemhhbmdzYW5cIixcInVzZXJUeXBlXCI6XCIxXCJ9IiwiaXNzIjoiVUFQX0FVVEgwIiwiZXhwIjoxNzg1ODQ3MjY0LCJpYXQiOjE3ODU4MTEyNjQsImp0aSI6IjlmYWUzMTZhLTRhNWUtNDZkMC1iZGFiLTAzYWQzNTk3OGIyNSJ9.q0c3ZVoD-8zB8bUBBORocxq1Y9bDOaki4LxkP0_ZvSafF_FRbpCLR4y-V9jqMU0mKwdpb7pWqi8Xig96u4zmkFDsLepZ9IqhTcflnqcyANRDO7lUUjVwF7yZgjiz8-ccxNDne02GyPsHKrA-O5IQV-s3AdazuvqQk2jCsnorCQI',
+  uaprefreshtoken: '7e30f18c-4be9-4787-8e87-f596360b502c',
 }
 
 interface GuideResponse<T> {
@@ -118,6 +120,33 @@ interface GuideQueryProjectsPayload {
   message?: unknown
 }
 
+interface GuideFilePayload {
+  fileId?: unknown
+  file_id?: unknown
+  fileName?: unknown
+  file_name?: unknown
+  fileType?: unknown
+  file_type?: unknown
+  url?: unknown
+  fileSize?: unknown
+  file_size?: unknown
+  uploadTime?: unknown
+  upload_time?: unknown
+  taskName?: unknown
+  task_name?: unknown
+  commissionTaskId?: unknown
+  commission_task_id?: unknown
+  score?: unknown
+  [key: string]: unknown
+}
+
+interface GuideFileReverseLocatePayload {
+  fileName?: unknown
+  file_name?: unknown
+  files?: GuideFilePayload[]
+  total?: unknown
+}
+
 export interface GuideTodoProjectGroups {
   all: GuideProjectCard[]
   groups: Record<string, GuideProjectCard[]>
@@ -142,6 +171,12 @@ export interface GuideQueryProjectsPage {
   dimension: string
   dimensionName: string
   message?: string
+}
+
+export interface GuideFileReverseLocateResult {
+  fileName: string
+  files: GuideFileResult[]
+  total: number
 }
 
 export interface GuideConversationSummary {
@@ -446,10 +481,8 @@ export const fetchRecentProjects = async (
     `/projects/recent?page=${encodeURIComponent(String(page))}&rows=${encodeURIComponent(String(rows))}`,
     { signal },
   )
-  const projects = Array.isArray(payload?.projects) ? payload.projects : []
-  const normalizedProjects = projects.map((project, index) =>
-    normalizeProject(project, 'recent', index),
-  )
+  const projectGroups = normalizeProjectGroups(payload?.projects, 'recent')
+  const normalizedProjects = projectGroups.all
 
   return {
     projects: normalizedProjects,
@@ -516,22 +549,20 @@ export const fetchQueryProjects = async (
   }
 }
 
-export const fetchTodoProjects = async (signal?: AbortSignal) => {
-  const payload = await requestGuide<GuideProjectListPayload>(
-    '/projects/todos?page=1&rows=20',
-    { signal },
-  )
-  const rawProjects = payload?.projects
+const normalizeProjectGroups = (
+  rawProjects: GuideProjectListPayload['projects'],
+  source: GuideProjectCard['source'],
+): GuideTodoProjectGroups => {
   const groups: Record<string, GuideProjectCard[]> = {}
 
   if (Array.isArray(rawProjects)) {
     groups['全部'] = rawProjects.map((project, index) =>
-      normalizeProject(project, 'todo', index),
+      normalizeProject(project, source, index),
     )
   } else if (rawProjects && typeof rawProjects === 'object') {
     Object.entries(rawProjects).forEach(([category, projects]) => {
-      groups[category] = projects.map((project, index) =>
-        normalizeProject(project, 'todo', index),
+      groups[category] = (Array.isArray(projects) ? projects : []).map(
+        (project, index) => normalizeProject(project, source, index),
       )
     })
   }
@@ -548,8 +579,34 @@ export const fetchTodoProjects = async (signal?: AbortSignal) => {
   return {
     all: dedupedAll,
     groups,
-    total: Number(payload?.total) || dedupedAll.length,
+    total: dedupedAll.length,
   } satisfies GuideTodoProjectGroups
+}
+
+export const fetchTodoProjects = async (signal?: AbortSignal) => {
+  const payload = await requestGuide<GuideProjectListPayload>(
+    '/projects/todos?page=1&rows=20',
+    { signal },
+  )
+  const projectGroups = normalizeProjectGroups(payload?.projects, 'todo')
+
+  return {
+    ...projectGroups,
+    total: pickNumber(payload?.total) ?? projectGroups.total,
+  }
+}
+
+export const fetchRecentTodoProjects = async (signal?: AbortSignal) => {
+  const payload = await requestGuide<GuideProjectListPayload>(
+    '/projects/recent?page=1&rows=20',
+    { signal },
+  )
+  const projectGroups = normalizeProjectGroups(payload?.projects, 'recent')
+
+  return {
+    ...projectGroups,
+    total: pickNumber(payload?.total) ?? projectGroups.total,
+  }
 }
 
 export interface GuideSearchRoute {
@@ -567,6 +624,7 @@ export interface GuideSearchResult {
   action: string
   conversationId: string
   guideStage: string
+  fileName: string
   route: GuideSearchRoute | null
   candidates: GuideDisambiguationCandidate[]
   cooperationItems: GuideCooperationItem[]
@@ -671,6 +729,7 @@ const normalizeSearchResult = (
     action: pickString(raw.action),
     conversationId: pickString(raw.conversation_id, raw.conversationId),
     guideStage: pickString(raw.guide_stage, raw.guideStage),
+    fileName: pickString(raw.file_name, raw.fileName),
     route: rawRoute
       ? {
           id: pickString(rawRoute.id),
@@ -788,6 +847,23 @@ const buildGuideDownloadUrl = (value: string) => {
   return ''
 }
 
+const buildGuideFileDownloadUrl = (value: string) => {
+  if (!value) {
+    return ''
+  }
+
+  try {
+    const url = new URL(value, GUIDE_FILE_DOWNLOAD_BASE_URL)
+    if (url.protocol === 'http:' || url.protocol === 'https:') {
+      return url.href
+    }
+  } catch {
+    return ''
+  }
+
+  return ''
+}
+
 const pickCooperationDownloadUrl = (
   item: Record<string, unknown>,
   metadata: Record<string, unknown>,
@@ -808,6 +884,57 @@ const pickCooperationDownloadUrl = (
       metadata.path,
     ),
   )
+
+export const fetchGuideFilesByName = async (
+  fileName: string,
+  signal?: AbortSignal,
+): Promise<GuideFileReverseLocateResult> => {
+  const normalizedFileName = fileName.trim()
+  if (!normalizedFileName) {
+    throw new Error('文件名不能为空')
+  }
+
+  const payload = await requestGuide<GuideFileReverseLocatePayload>(
+    '/file/reverse-locate',
+    {
+      method: 'POST',
+      body: {
+        file_name: normalizedFileName,
+        user_id: GUIDE_USER_ID,
+      },
+      signal,
+    },
+  )
+  const files = pickRecordObjects(payload?.files)
+    .map((file) => ({
+      fileId: pickString(file.fileId, file.file_id),
+      fileName: pickString(file.fileName, file.file_name),
+      fileType: pickString(file.fileType, file.file_type),
+      url: buildGuideFileDownloadUrl(pickString(file.url)),
+      fileSize: pickNumber(file.fileSize, file.file_size),
+      uploadTime: pickString(file.uploadTime, file.upload_time),
+      taskName: pickString(file.taskName, file.task_name),
+      commissionTaskId: pickString(
+        file.commissionTaskId,
+        file.commission_task_id,
+      ),
+      score: pickNumber(file.score),
+    }))
+    .filter((file) => file.fileName && file.url)
+  const dedupedFiles = Array.from(
+    new Map(files.map((file) => [file.fileId || file.url, file])).values(),
+  )
+
+  return {
+    fileName: pickString(
+      payload?.fileName,
+      payload?.file_name,
+      normalizedFileName,
+    ),
+    files: dedupedFiles,
+    total: pickNumber(payload?.total) ?? dedupedFiles.length,
+  }
+}
 
 interface GuideFilePreviewResponse {
   code?: unknown

@@ -1,5 +1,11 @@
 <template>
 	<section class="workspace-view workspace-view--todo" aria-label="增强待办">
+		<nav class="workspace-source-tabs" aria-label="待办来源">
+			<button v-for="source in sources" :key="source.key" type="button"
+				:class="{ 'is-active': source.key === activeSource }" @click="handleSourceChange(source.key)">
+				{{ source.label }}
+			</button>
+		</nav>
 		<nav class="workspace-subtabs" aria-label="待办分类">
 			<button v-for="item in filters" :key="item" type="button" :class="{ 'is-active': item === activeFilter }"
 				@click="activeFilter = item">{{ item }}</button>
@@ -8,7 +14,7 @@
 			<div v-if="isLoading && !hasTodos" class="workspace-state">正在加载待办项目...</div>
 			<div v-else-if="errorMessage && !hasTodos" class="workspace-state is-error">
 				<span>{{ errorMessage }}</span>
-				<button type="button" @click="loadTodos">重新加载</button>
+				<button type="button" @click="loadCurrentSource">重新加载</button>
 			</div>
 			<div v-else-if="!filteredTodos.length" class="workspace-state">暂无待办项目</div>
 			<div v-else class="todo-list">
@@ -67,6 +73,7 @@ import {
 } from '@ant-design/icons-vue'
 import { DIGITAL_HUMAN_DEVELOPMENT_NOTICE, DIGITAL_HUMAN_TODO_FILTERS } from '@/config/demo-config'
 import {
+	fetchRecentTodoProjects,
 	fetchTodoProjects,
 	type GuideProjectCard,
 	type GuideTodoProjectGroups,
@@ -82,9 +89,17 @@ const emit = defineEmits<{
 
 const filters = DIGITAL_HUMAN_TODO_FILTERS
 const activeFilter = ref(filters[0])
+const sources = [
+	{ key: 'todos', label: '全部待办' },
+	{ key: 'recent', label: '近期项目' },
+] as const
+type TodoSource = (typeof sources)[number]['key']
+
+const activeSource = ref<TodoSource>('todos')
 const todoGroups = ref<GuideTodoProjectGroups>({ all: [], groups: {}, total: 0 })
-const isLoading = ref(false)
-const errorMessage = ref('')
+const recentGroups = ref<GuideTodoProjectGroups>({ all: [], groups: {}, total: 0 })
+const loadingSource = ref<TodoSource | null>(null)
+const errorBySource = ref<Record<TodoSource, string>>({ todos: '', recent: '' })
 let activeRequest: AbortController | null = null
 const actionIconMap: Record<string, unknown> = {
 	提问: QuestionCircleOutlined,
@@ -103,15 +118,21 @@ const categoryMap: Record<string, string> = {
 	其他: '其他',
 }
 
+const currentGroups = computed(() =>
+	activeSource.value === 'todos' ? todoGroups.value : recentGroups.value,
+)
+const isLoading = computed(() => loadingSource.value === activeSource.value)
+const errorMessage = computed(() => errorBySource.value[activeSource.value])
+
 const filteredTodos = computed(() => {
 	if (activeFilter.value === filters[0]) {
-		return todoGroups.value.all
+		return currentGroups.value.all
 	}
 
-	return todoGroups.value.groups[categoryMap[activeFilter.value] ?? activeFilter.value] ?? []
+	return currentGroups.value.groups[categoryMap[activeFilter.value] ?? activeFilter.value] ?? []
 })
 
-const hasTodos = computed(() => todoGroups.value.all.length > 0)
+const hasTodos = computed(() => currentGroups.value.all.length > 0)
 
 const handleAction = (project: GuideProjectCard, action: string) => {
 	if (action === '提问') {
@@ -122,27 +143,43 @@ const handleAction = (project: GuideProjectCard, action: string) => {
 	notifyDeveloping()
 }
 
-const loadTodos = async () => {
+const loadCurrentSource = async () => {
 	activeRequest?.abort()
 	const controller = new AbortController()
 	activeRequest = controller
-	isLoading.value = true
-	errorMessage.value = ''
+	const source = activeSource.value
+	loadingSource.value = source
+	errorBySource.value[source] = ''
 
 	try {
-		const projects = await fetchTodoProjects(controller.signal)
-		if (!controller.signal.aborted) {
-			todoGroups.value = projects
+		const projects = source === 'todos'
+			? await fetchTodoProjects(controller.signal)
+			: await fetchRecentTodoProjects(controller.signal)
+		if (!controller.signal.aborted && activeSource.value === source) {
+			if (source === 'todos') {
+				todoGroups.value = projects
+			} else {
+				recentGroups.value = projects
+			}
 		}
 	} catch (error) {
-		if (!controller.signal.aborted) {
-			errorMessage.value = error instanceof Error ? error.message : '待办项目加载失败'
+		if (!controller.signal.aborted && activeSource.value === source) {
+			errorBySource.value[source] = error instanceof Error ? error.message : '待办项目加载失败'
 		}
 	} finally {
 		if (activeRequest === controller) {
 			activeRequest = null
-			isLoading.value = false
+			loadingSource.value = null
 		}
+	}
+}
+
+const handleSourceChange = (source: TodoSource) => {
+	activeRequest?.abort()
+	activeSource.value = source
+	activeFilter.value = filters[0]
+	if (props.active) {
+		void loadCurrentSource()
 	}
 }
 
@@ -150,13 +187,13 @@ watch(
 	() => props.active,
 	(active) => {
 		if (active) {
-			void loadTodos()
+			void loadCurrentSource()
 			return
 		}
 
 		activeRequest?.abort()
 		activeRequest = null
-		isLoading.value = false
+		loadingSource.value = null
 	},
 	{ immediate: true },
 )
@@ -174,6 +211,42 @@ onBeforeUnmount(() => activeRequest?.abort())
 	padding: 17px 12px 14px;
 	color: #20242c;
 	background: #fafaf8;
+}
+
+.workspace-source-tabs {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	margin: 0 8px 10px;
+	border-bottom: 1px solid #edf0f4;
+}
+
+.workspace-source-tabs button {
+	position: relative;
+	padding: 0 1px 8px;
+	border: 0;
+	background: transparent;
+	color: #7d8796;
+	font-size: 13px;
+	line-height: 20px;
+	cursor: pointer;
+}
+
+.workspace-source-tabs button.is-active {
+	color: #2f85e8;
+	font-weight: 600;
+}
+
+.workspace-source-tabs button.is-active::after {
+	position: absolute;
+	right: 0;
+	bottom: -1px;
+	left: 0;
+	height: 2px;
+	border-radius: 2px 2px 0 0;
+	background: #3d9cff;
+	content: '';
 }
 
 .workspace-subtabs {

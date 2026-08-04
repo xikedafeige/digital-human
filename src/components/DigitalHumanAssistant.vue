@@ -178,6 +178,39 @@
 										</ul>
 									</section>
 
+									<section v-if="message.fileResults" class="assistant-message__files" aria-label="文件查询结果">
+										<strong>文件查询结果</strong>
+										<ul v-if="message.fileResults.length">
+											<li v-for="file in message.fileResults" :key="`${message.id}-file-${file.fileId || file.url}`">
+												<article class="assistant-message__file-card">
+													<button type="button" class="assistant-message__file-link" :title="file.fileName"
+														@mousedown.prevent :disabled="isFilePreviewing(file)" @click="handleFilePreview(file)">
+														<FolderOpenOutlined />
+														<strong>{{ file.fileName }}</strong>
+													</button>
+													<div class="assistant-message__file-meta">
+														<span v-if="file.taskName" :title="file.taskName">{{ file.taskName }}</span>
+														<span v-if="file.fileType">{{ file.fileType }}</span>
+														<span v-if="file.uploadTime">{{ file.uploadTime }}</span>
+													</div>
+													<div class="assistant-message__file-actions">
+														<button type="button" class="assistant-message__file-action" aria-label="预览"
+															data-tooltip="预览" @mousedown.prevent :disabled="isFilePreviewing(file)"
+															@click="handleFilePreview(file)">
+															<EyeOutlined />
+														</button>
+														<button type="button" class="assistant-message__file-action" aria-label="下载"
+															data-tooltip="下载" @mousedown.prevent :disabled="isFileDownloading(file)"
+															@click="handleFileDownload(file)">
+															<DownloadOutlined />
+														</button>
+													</div>
+												</article>
+											</li>
+										</ul>
+										<p v-else class="assistant-message__files-empty">未找到匹配文件</p>
+									</section>
+
 									<section v-if="message.cooperationItems?.length" class="assistant-message__cooperation"
 										aria-label="操作手册">
 										<strong>操作手册</strong>
@@ -356,10 +389,7 @@
 								:class="{ 'is-active': isHistoryPanelOpen }" @click="handleHistoryOpen">
 								<HistoryOutlined />
 							</a-button>
-							<a-button class="assistant-input__tool-button" type="text" aria-label="近期项目" data-tooltip="近期项目"
-								@click="isRecentProjectsOpen = true">
-								<ProjectOutlined />
-							</a-button>
+							<!-- 近期项目已整合至增强待办页，保留 RecentProjectsModal 供搜索意图自动打开。 -->
 							<a-button class="assistant-input__tool-button" type="text" aria-label="新建对话" data-tooltip="新建对话"
 								@click="handleClearConversation">
 								<CommentOutlined />
@@ -423,14 +453,16 @@ import {
 	HistoryOutlined,
 	EyeOutlined,
 	PaperClipOutlined,
-	ProjectOutlined,
 	RadarChartOutlined,
 	SendOutlined,
 	StarFilled,
 	StopOutlined,
 } from '@ant-design/icons-vue'
-import type { DemoMessage } from '@/types/avatar-types'
-import type { GuideCooperationItem } from '@/types/avatar-types'
+import type {
+	DemoMessage,
+	GuideCooperationItem,
+	GuideFileResult,
+} from '@/types/avatar-types'
 import {
 	markdownToPlainText,
 	renderMarkdownToHtml,
@@ -460,6 +492,8 @@ import {
 const isRecentProjectsOpen = ref(false)
 const cooperationPreviewingKeys = ref<string[]>([])
 const cooperationDownloadingKeys = ref<string[]>([])
+const filePreviewingKeys = ref<string[]>([])
+const fileDownloadingKeys = ref<string[]>([])
 const {
 	attachProject,
 	clearConversation,
@@ -914,6 +948,70 @@ const handleCooperationDownload = async (item: GuideCooperationItem) => {
 		antMessage.warning('文件暂不可下载')
 	} finally {
 		cooperationDownloadingKeys.value = cooperationDownloadingKeys.value.filter(
+			(key) => key !== actionKey,
+		)
+	}
+}
+
+const getFileActionKey = (file: GuideFileResult) => file.fileId || file.url
+
+const isFilePreviewing = (file: GuideFileResult) =>
+	filePreviewingKeys.value.includes(getFileActionKey(file))
+
+const isFileDownloading = (file: GuideFileResult) =>
+	fileDownloadingKeys.value.includes(getFileActionKey(file))
+
+const handleFilePreview = async (file: GuideFileResult) => {
+	const previewId = file.fileId.trim()
+	const actionKey = getFileActionKey(file)
+	if (!previewId || !actionKey || isFilePreviewing(file)) {
+		antMessage.warning('文件暂不可预览')
+		return
+	}
+
+	const previewWindow = window.open('', '_blank')
+	if (!previewWindow) {
+		antMessage.warning('文件暂不可预览')
+		return
+	}
+	previewWindow.opener = null
+	filePreviewingKeys.value = [...filePreviewingKeys.value, actionKey]
+	try {
+		const previewUrl = await fetchCooperationPreviewUrl(previewId)
+		previewWindow.location.replace(previewUrl)
+	} catch {
+		previewWindow.close()
+		antMessage.warning('文件暂不可预览')
+	} finally {
+		filePreviewingKeys.value = filePreviewingKeys.value.filter(
+			(key) => key !== actionKey,
+		)
+	}
+}
+
+const handleFileDownload = async (file: GuideFileResult) => {
+	const actionKey = getFileActionKey(file)
+	if (!file.url || !actionKey || isFileDownloading(file)) {
+		antMessage.warning('文件暂不可下载')
+		return
+	}
+
+	fileDownloadingKeys.value = [...fileDownloadingKeys.value, actionKey]
+	try {
+		const content = await fetchCooperationFile(file.url)
+		const objectUrl = URL.createObjectURL(content)
+		const link = document.createElement('a')
+		link.href = objectUrl
+		link.download = file.fileName || 'file'
+		link.style.display = 'none'
+		document.body.appendChild(link)
+		link.click()
+		link.remove()
+		window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0)
+	} catch {
+		antMessage.warning('文件暂不可下载')
+	} finally {
+		fileDownloadingKeys.value = fileDownloadingKeys.value.filter(
 			(key) => key !== actionKey,
 		)
 	}
@@ -1583,6 +1681,7 @@ onBeforeUnmount(() => {
 		border-color 0.18s ease,
 		background 0.18s ease,
 		color 0.18s ease;
+	margin: 2px 0
 }
 
 .assistant-suggestions__item:hover {
@@ -1605,6 +1704,7 @@ onBeforeUnmount(() => {
 	position: relative;
 	display: flex;
 	min-height: 0;
+	overflow-x: scroll;
 }
 
 .assistant-messages-wrap .assistant-messages {
@@ -2015,6 +2115,147 @@ onBeforeUnmount(() => {
 
 .assistant-message__follow-rest {
 	color: #8a97ad;
+}
+
+.assistant-message__files {
+	display: grid;
+	gap: 7px;
+	min-width: 0;
+	max-width: 100%;
+	margin-top: 10px;
+	padding: 10px 12px;
+	border-radius: 10px;
+	background: #f7f8fb;
+}
+
+.assistant-message__files>strong {
+	color: #68758a;
+	font-size: 11px;
+	line-height: 17px;
+}
+
+.assistant-message__files ul {
+	display: grid;
+	gap: 8px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.assistant-message__file-card {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 7px 10px;
+	min-width: 0;
+	max-width: 100%;
+	width: 100%;
+	padding: 10px 12px;
+	border: 1px solid rgba(179, 199, 240, 0.88);
+	border-radius: 10px;
+	background: #fff;
+}
+
+.assistant-message__file-link {
+	display: inline-flex;
+	grid-column: 1;
+	align-items: flex-start;
+	gap: 7px;
+	min-width: 0;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: #315a9f;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.assistant-message__file-link:hover strong,
+.assistant-message__file-link:focus-visible strong {
+	color: #2457d6;
+	text-decoration: underline;
+}
+
+.assistant-message__file-link:disabled {
+	cursor: not-allowed;
+	opacity: .48;
+}
+
+.assistant-message__file-link :deep(.anticon) {
+	flex: none;
+	margin-top: 2px;
+	font-size: 14px;
+	color: #4f72ff;
+}
+
+.assistant-message__file-link strong {
+	min-width: 0;
+	font-size: 12px;
+	line-height: 18px;
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
+.assistant-message__file-meta {
+	display: flex;
+	grid-column: 1;
+	flex-wrap: wrap;
+	gap: 3px 8px;
+	min-width: 0;
+	color: #7b8da9;
+	font-size: 10px;
+	line-height: 16px;
+}
+
+.assistant-message__file-meta span {
+	min-width: 0;
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
+.assistant-message__file-actions {
+	display: inline-flex;
+	grid-column: 2;
+	grid-row: 1 / span 2;
+	align-items: center;
+	align-self: center;
+	gap: 6px;
+}
+
+.assistant-message__file-action {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: 0;
+	border-radius: 7px;
+	background: rgba(79, 120, 255, 0.09);
+	color: #4f72ff;
+	cursor: pointer;
+	transition: background-color .16s ease, color .16s ease;
+}
+
+.assistant-message__file-action:hover {
+	background: rgba(79, 120, 255, 0.18);
+	color: #345fe0;
+}
+
+.assistant-message__file-action:disabled {
+	cursor: not-allowed;
+	opacity: .48;
+}
+
+.assistant-message__file-action :deep(.anticon) {
+	font-size: 13px;
+}
+
+.assistant-message__files-empty {
+	margin: 0;
+	color: #7b879b;
+	font-size: 12px;
+	line-height: 20px;
 }
 
 .assistant-message__cooperation {

@@ -9,10 +9,17 @@ const TABLE_DELIMITER_LINE_PATTERN =
   /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/
 const TABLE_ROW_LINE_PATTERN = /^\s*\|.+\|.*$/
 const FENCE_LINE_PATTERN = /^\s*(`{3,}|~{3,})/
-const ECHARTS_FENCE_BLOCK_PATTERN =
-  /(^|\n)([ \t]*)(`{3,}|~{3,})[ \t]*echarts[ \t]*\n([\s\S]*?)\n\2\3[ \t]*(?=\n|$)/gi
-const TRAILING_ECHARTS_FENCE_PATTERN =
-  /(^|\n)[ \t]*(`{3,}|~{3,})[ \t]*echarts[ \t]*\n[\s\S]*$/i
+const ECHARTS_OPENING_FENCE_PATTERN =
+  /^([ \t]*)(\x60{3,}|~{3,})[ \t]*echarts[ \t]*$/i
+const ECHARTS_CLOSING_FENCE_PATTERN = /^[ \t]*(\x60{3,}|~{3,})[ \t]*$/
+const GENERIC_FENCE_OPENING_PATTERN = /^[ \t]*(\x60{3,}|~{3,})/
+
+interface EChartsFenceBlock {
+  startIndex: number
+  endIndex: number
+  raw: string
+  option: Record<string, unknown>
+}
 
 export interface ParsedReplyContent {
   rawText: string
@@ -42,47 +49,172 @@ const getEChartsOption = (raw: string) => {
   }
 }
 
+const createEChartsFenceBlock = (
+  startIndex: number,
+  endIndex: number,
+  raw: string,
+): EChartsFenceBlock | null => {
+  const normalizedRaw = raw.trim()
+  const option = getEChartsOption(normalizedRaw)
+
+  return option
+    ? {
+        startIndex,
+        endIndex,
+        raw: normalizedRaw,
+        option,
+      }
+    : null
+}
+
+const findUnlabeledEChartsBlock = (
+  markdown: string,
+  lines: string[],
+  lineOffsets: number[],
+  closeLineIndex: number,
+  closeLineEndIndex: number,
+) => {
+  for (let index = closeLineIndex - 1; index >= 0; index -= 1) {
+    if (!/^[ \t]*\{/.test(lines[index])) {
+      continue
+    }
+
+    const block = createEChartsFenceBlock(
+      lineOffsets[index],
+      closeLineEndIndex,
+      markdown.slice(lineOffsets[index], lineOffsets[closeLineIndex]),
+    )
+
+    if (block) {
+      return block
+    }
+  }
+
+  return null
+}
+
+// 按行扫描围栏，兼容流式分片、不同缩进和后端遗漏起始围栏的异常格式。
+const findEChartsFenceBlocks = (markdown: string): EChartsFenceBlock[] => {
+  const normalizedMarkdown = normalizeLineEndings(markdown)
+  const lines = normalizedMarkdown.split('\n')
+  const lineOffsets: number[] = []
+  const blocks: EChartsFenceBlock[] = []
+  let offset = 0
+  let activeEChartsFence: {
+    startIndex: number
+    contentStartIndex: number
+    marker: string
+  } | null = null
+  let activeGenericFenceMarker = ''
+
+  lines.forEach((line) => {
+    lineOffsets.push(offset)
+    offset += line.length + 1
+  })
+
+  lines.forEach((line, lineIndex) => {
+    const lineStartIndex = lineOffsets[lineIndex]
+    const lineEndIndex = lineStartIndex + line.length
+    const closingFenceMatch = line.match(ECHARTS_CLOSING_FENCE_PATTERN)
+
+    if (activeEChartsFence) {
+      if (
+        closingFenceMatch &&
+        closingFenceMatch[1].charAt(0) === activeEChartsFence.marker
+      ) {
+        const block = createEChartsFenceBlock(
+          activeEChartsFence.startIndex,
+          lineEndIndex,
+          normalizedMarkdown.slice(
+            activeEChartsFence.contentStartIndex,
+            lineStartIndex,
+          ),
+        )
+        if (block) {
+          blocks.push(block)
+        }
+        activeEChartsFence = null
+      }
+      return
+    }
+
+    if (activeGenericFenceMarker) {
+      if (
+        closingFenceMatch &&
+        closingFenceMatch[1].charAt(0) === activeGenericFenceMarker
+      ) {
+        activeGenericFenceMarker = ''
+      }
+      return
+    }
+
+    const openingFenceMatch = line.match(ECHARTS_OPENING_FENCE_PATTERN)
+    if (openingFenceMatch) {
+      activeEChartsFence = {
+        startIndex: lineStartIndex,
+        contentStartIndex: lineEndIndex + 1,
+        marker: openingFenceMatch[2].charAt(0),
+      }
+      return
+    }
+
+    if (closingFenceMatch) {
+      const block = findUnlabeledEChartsBlock(
+        normalizedMarkdown,
+        lines,
+        lineOffsets,
+        lineIndex,
+        lineEndIndex,
+      )
+      if (block) {
+        blocks.push(block)
+        return
+      }
+    }
+
+    const genericFenceMatch = line.match(GENERIC_FENCE_OPENING_PATTERN)
+    if (genericFenceMatch) {
+      activeGenericFenceMarker = genericFenceMatch[1].charAt(0)
+    }
+  })
+
+  return blocks
+}
+
 export const splitMarkdownRenderBlocks = (markdown: string): MessageRenderBlock[] => {
   const normalizedMarkdown = normalizeLineEndings(markdown)
   if (!normalizedMarkdown) {
     return []
   }
 
+  const fenceBlocks = findEChartsFenceBlocks(normalizedMarkdown)
   const blocks: MessageRenderBlock[] = []
   let cursor = 0
-  ECHARTS_FENCE_BLOCK_PATTERN.lastIndex = 0
-  let match = ECHARTS_FENCE_BLOCK_PATTERN.exec(normalizedMarkdown)
 
-  while (match) {
-    const option = getEChartsOption(match[4].trim())
-    if (option) {
-      const startIndex = match.index + match[1].length
-      const markdownContent = normalizedMarkdown.slice(cursor, startIndex)
-      if (markdownContent.trim()) {
-        blocks.push({
-          type: 'markdown',
-          id: `markdown-${cursor}`,
-          content: markdownContent,
-        })
-      }
-
+  fenceBlocks.forEach((block) => {
+    const markdownContent = normalizedMarkdown.slice(cursor, block.startIndex)
+    if (markdownContent.trim()) {
       blocks.push({
-        type: 'echarts',
-        id: `echarts-${startIndex}`,
-        option,
-        raw: match[4].trim(),
+        type: 'markdown',
+        id: 'markdown-' + cursor,
+        content: markdownContent,
       })
-      cursor = match.index + match[0].length
     }
 
-    match = ECHARTS_FENCE_BLOCK_PATTERN.exec(normalizedMarkdown)
-  }
+    blocks.push({
+      type: 'echarts',
+      id: 'echarts-' + block.startIndex,
+      option: block.option,
+      raw: block.raw,
+    })
+    cursor = block.endIndex
+  })
 
   const trailingMarkdown = normalizedMarkdown.slice(cursor)
   if (trailingMarkdown.trim()) {
     blocks.push({
       type: 'markdown',
-      id: `markdown-${cursor}`,
+      id: 'markdown-' + cursor,
       content: trailingMarkdown,
     })
   }
@@ -90,15 +222,23 @@ export const splitMarkdownRenderBlocks = (markdown: string): MessageRenderBlock[
   return blocks
 }
 
-const removeEChartsFenceBlocks = (markdown: string) =>
-  normalizeLineEndings(markdown)
-    .replace(
-      ECHARTS_FENCE_BLOCK_PATTERN,
-      (_match, leadingLineBreak: string) => leadingLineBreak,
-    )
-    .replace(TRAILING_ECHARTS_FENCE_PATTERN, (_match, leadingLineBreak: string) =>
-      leadingLineBreak,
-    )
+const removeEChartsFenceBlocks = (markdown: string) => {
+  const normalizedMarkdown = normalizeLineEndings(markdown)
+  const fenceBlocks = findEChartsFenceBlocks(normalizedMarkdown)
+  if (!fenceBlocks.length) {
+    return normalizedMarkdown
+  }
+
+  const markdownParts: string[] = []
+  let cursor = 0
+  fenceBlocks.forEach((block) => {
+    markdownParts.push(normalizedMarkdown.slice(cursor, block.startIndex))
+    cursor = block.endIndex
+  })
+  markdownParts.push(normalizedMarkdown.slice(cursor))
+
+  return markdownParts.join('')
+}
 
 const isTableDelimiterLine = (line: string) =>
   TABLE_DELIMITER_LINE_PATTERN.test(line)

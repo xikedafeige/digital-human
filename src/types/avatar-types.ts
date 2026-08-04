@@ -33,6 +33,18 @@ export interface GuideCooperationItem {
   metadata?: Record<string, unknown>
 }
 
+export interface GuideFileResult {
+  fileId: string
+  fileName: string
+  fileType: string
+  url: string
+  fileSize: number | null
+  uploadTime: string
+  taskName: string
+  commissionTaskId: string
+  score: number | null
+}
+
 export interface GuideDisambiguationCandidate {
   id: string
   label: string
@@ -122,6 +134,7 @@ export interface DemoMessage {
   suggestions?: string[]
   cooperationItems?: GuideCooperationItem[]
   queryProjects?: GuideProjectCard[]
+  fileResults?: GuideFileResult[]
   disambiguationCandidates?: GuideDisambiguationCandidate[]
   disambiguationQuery?: string
   selectedDisambiguationCandidateId?: string

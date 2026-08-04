@@ -16,6 +16,7 @@ import type {
 } from '@/types/avatar-types'
 import {
   fetchQueryProjects,
+  fetchGuideFilesByName,
   searchGuide,
   streamGuideProject,
   streamGuideQa,
@@ -44,7 +45,7 @@ const WHITESPACE_RE = /\s/
 
 // 构造外部服务不可用时的本地兜底回复文本。
 const buildFallbackReplyText = (question: string) =>
-  `当前服务暂时不可用，先为你提供本地演示回复。\n\n${buildDemoReply(question)}`
+  `当前服务暂时不可用，请排查~~~。\n\n${buildDemoReply(question)}`
 
 // 清理播报文本首尾空白并统一换行符。
 const appendSpeechPause = (text: string, pauseMark: '，' | '。') => {
@@ -97,10 +98,7 @@ const normalizeSpeechText = (value: string) => {
 // 将歧义候选项标题规范化为可提交给后端的 query，去掉图标和表情。
 const normalizeDisambiguationQuery = (value: string) =>
   value
-    .replace(
-      /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu,
-      '',
-    )
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu, '')
     .replace(/\s{2,}/g, ' ')
     .trim()
 
@@ -122,6 +120,7 @@ const createMessage = (
       | 'routeCard'
       | 'suggestions'
       | 'queryProjects'
+      | 'fileResults'
       | 'disambiguationCandidates'
       | 'disambiguationQuery'
       | 'selectedDisambiguationCandidateId'
@@ -145,10 +144,10 @@ const createMessage = (
   routeCard: options.routeCard,
   suggestions: options.suggestions,
   queryProjects: options.queryProjects,
+  fileResults: options.fileResults,
   disambiguationCandidates: options.disambiguationCandidates,
   disambiguationQuery: options.disambiguationQuery,
-  selectedDisambiguationCandidateId:
-    options.selectedDisambiguationCandidateId,
+  selectedDisambiguationCandidateId: options.selectedDisambiguationCandidateId,
   projectContext: options.projectContext,
   requestMode: options.requestMode,
 })
@@ -1189,6 +1188,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
         Pick<
           DemoMessage,
           | 'queryProjects'
+          | 'fileResults'
           | 'disambiguationCandidates'
           | 'disambiguationQuery'
         >
@@ -1207,6 +1207,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     targetMessage.suggestions = messageOptions.suggestions
     targetMessage.cooperationItems = messageOptions.cooperationItems
     targetMessage.queryProjects = messageOptions.queryProjects
+    targetMessage.fileResults = messageOptions.fileResults
     targetMessage.disambiguationCandidates =
       messageOptions.disambiguationCandidates
     targetMessage.disambiguationQuery = messageOptions.disambiguationQuery
@@ -1229,9 +1230,10 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
     finishSpeechQueueIfReady(flowId)
     return Boolean(
       parsedContent.bodyMarkdown ||
-        messageOptions.routeCard ||
-        messageOptions.cooperationItems?.length ||
-        messageOptions.queryProjects?.length,
+      messageOptions.routeCard ||
+      messageOptions.cooperationItems?.length ||
+      messageOptions.queryProjects?.length ||
+      messageOptions.fileResults,
     )
   }
 
@@ -1288,6 +1290,7 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
       assistantMessage.routeCard = undefined
       assistantMessage.suggestions = undefined
       assistantMessage.queryProjects = undefined
+      assistantMessage.fileResults = undefined
       assistantMessage.cooperationItems = undefined
       assistantMessage.disambiguationCandidates = undefined
       assistantMessage.disambiguationQuery = undefined
@@ -1385,8 +1388,45 @@ export function useDigitalHumanDemo(demoOptions: DigitalHumanDemoOptions = {}) {
 
         const nextConversationId =
           searchResult.conversationId || conversationId.value
-        if (searchResult.intent === 'query' || searchResult.action === 'call_smart_query_api') {
-          const queryResult = await fetchQueryProjects(question, guideController.signal)
+        if (
+          searchResult.intent === 'file_query' ||
+          searchResult.action === 'call_file_query_api'
+        ) {
+          const fileResult = await fetchGuideFilesByName(
+            searchResult.fileName,
+            guideController.signal,
+          )
+          if (flowId !== activeFlowId) {
+            return
+          }
+
+          completeGuideReply(
+            flowId,
+            assistantMessageId,
+            searchResult.description,
+            {
+              conversationId: conversationId.value,
+              routeCard: undefined,
+              suggestions: undefined,
+              cooperationItems: undefined,
+              fileResults: fileResult.files,
+              disambiguationCandidates: undefined,
+              disambiguationQuery: undefined,
+              projectContext: undefined,
+              requestMode: 'global',
+              speak: false,
+            },
+          )
+          return
+        }
+        if (
+          searchResult.intent === 'query' ||
+          searchResult.action === 'call_smart_query_api'
+        ) {
+          const queryResult = await fetchQueryProjects(
+            question,
+            guideController.signal,
+          )
           if (flowId !== activeFlowId) {
             return
           }
